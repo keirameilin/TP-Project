@@ -1,20 +1,17 @@
+import { isValidDateString } from '../../lib/dates';
+import { ValidationError, type ValidationIssue as BaseValidationIssue } from '../../lib/validation';
 import { SESSION_TYPES, type SessionType } from './types';
+
+export { isValidDateString, toLocalDateString } from '../../lib/dates';
+export { ValidationError } from '../../lib/validation';
 
 export const RPE_MIN = 1;
 export const RPE_MAX = 10;
 export const DURATION_MAX_MINUTES = 24 * 60;
 
-export interface ValidationIssue {
-  field: 'date' | 'sessionType' | 'durationMinutes' | 'rpe' | 'notes';
-  message: string;
-}
-
-export class ValidationError extends Error {
-  constructor(public readonly issues: ValidationIssue[]) {
-    super(issues.map((i) => `${i.field}: ${i.message}`).join('; '));
-    this.name = 'ValidationError';
-  }
-}
+export type ValidationIssue = BaseValidationIssue<
+  'date' | 'sessionType' | 'durationMinutes' | 'rpe' | 'notes'
+>;
 
 export class DuplicateDateError extends Error {
   constructor(public readonly date: string) {
@@ -30,22 +27,6 @@ export interface SessionFields {
   durationMinutes: number | null;
   rpe: number | null;
   notes: string | null;
-}
-
-/** Formats a Date as a local-time YYYY-MM-DD string (not UTC, so "today" matches the user's day). */
-export function toLocalDateString(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-export function isValidDateString(value: string): boolean {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return false;
-  const [, y, m, d] = match.map(Number);
-  const date = new Date(y, m - 1, d);
-  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
 }
 
 export function isSessionType(value: unknown): value is SessionType {

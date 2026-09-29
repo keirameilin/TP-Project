@@ -20,6 +20,22 @@ const MIGRATIONS: string[] = [
     CHECK (session_type = 'rest_day' OR (duration_minutes IS NOT NULL AND rpe IS NOT NULL))
   );
   `,
+  // v2: food log (many entries per date)
+  `
+  CREATE TABLE food_entries (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    date       TEXT    NOT NULL,                -- local calendar date, YYYY-MM-DD
+    meal_type  TEXT    NOT NULL CHECK (meal_type IN ('breakfast', 'lunch', 'dinner', 'snack')),
+    food_name  TEXT    NOT NULL CHECK (length(trim(food_name)) > 0),
+    calories   REAL    NOT NULL CHECK (calories >= 0),
+    protein_g  REAL    NOT NULL CHECK (protein_g >= 0),
+    carbs_g    REAL    NOT NULL CHECK (carbs_g >= 0),
+    fat_g      REAL    NOT NULL CHECK (fat_g >= 0),
+    created_at TEXT    NOT NULL,                -- ISO-8601 UTC timestamp
+    updated_at TEXT    NOT NULL
+  );
+  CREATE INDEX idx_food_entries_date ON food_entries (date);
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
