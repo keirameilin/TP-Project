@@ -173,3 +173,17 @@ describe('schema constraints', () => {
     await expect(insert('lunch', 'Eggs', 200, -1)).rejects.toThrow(/CHECK/);
   });
 });
+
+describe('getDailyCalories', () => {
+  it('sums calories per logged day in range, oldest first, skipping empty days', async () => {
+    await repo.create({ ...oats, date: '2026-09-27', calories: 100.1 });
+    await repo.create({ ...oats, date: '2026-09-27', calories: 200.2 });
+    await repo.create({ ...oats, date: '2026-09-29', calories: 500 });
+    await repo.create({ ...oats, date: '2026-09-30', calories: 999 });
+
+    expect(await repo.getDailyCalories({ from: '2026-09-26', to: '2026-09-29' })).toEqual([
+      { date: '2026-09-27', calories: 300.3 },
+      { date: '2026-09-29', calories: 500 },
+    ]);
+  });
+});

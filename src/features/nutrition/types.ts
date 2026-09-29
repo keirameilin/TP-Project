@@ -37,3 +37,23 @@ export interface DailyTotals {
   totals: Macros;
   byMeal: Record<MealType, Macros>;
 }
+
+export interface DailyCalories {
+  date: string;
+  calories: number;
+}
+
+/**
+ * Whether the user says a day's food log is complete. An unmarked day has no status;
+ * `incomplete` means they know food is missing, so the day shouldn't feed calculations.
+ */
+export const LOG_DAY_STATUSES = ['complete', 'incomplete'] as const;
+
+export type LogDayStatus = (typeof LOG_DAY_STATUSES)[number];
+
+export interface FoodLogDay {
+  date: string;
+  status: LogDayStatus;
+  /** ISO-8601 UTC timestamp. */
+  updatedAt: string;
+}

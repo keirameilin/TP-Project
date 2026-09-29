@@ -1,6 +1,6 @@
 import { isValidDateString } from '../../lib/dates';
 import { ValidationError, type ValidationIssue as BaseValidationIssue } from '../../lib/validation';
-import { MEAL_TYPES, type Macros, type MealType } from './types';
+import { LOG_DAY_STATUSES, MEAL_TYPES, type LogDayStatus, type Macros, type MealType } from './types';
 
 export const FOOD_NAME_MAX_LENGTH = 200;
 /** Per-entry sanity caps — well above any real single food, but catch typos like 25000 kcal. */
@@ -62,5 +62,21 @@ export function validateFoodEntry(e: FoodEntryFields): ValidationIssue[] {
 /** Throws a ValidationError if the entry is invalid. */
 export function assertValidFoodEntry(e: FoodEntryFields): void {
   const issues = validateFoodEntry(e);
+  if (issues.length > 0) throw new ValidationError(issues);
+}
+
+export function isLogDayStatus(value: unknown): value is LogDayStatus {
+  return typeof value === 'string' && (LOG_DAY_STATUSES as readonly string[]).includes(value);
+}
+
+/** Throws a ValidationError if the date or status is invalid. */
+export function assertValidLogDay(date: string, status: LogDayStatus): void {
+  const issues: BaseValidationIssue<'date' | 'status'>[] = [];
+  if (!isValidDateString(date)) {
+    issues.push({ field: 'date', message: 'must be a valid date in YYYY-MM-DD format' });
+  }
+  if (!isLogDayStatus(status)) {
+    issues.push({ field: 'status', message: `must be one of: ${LOG_DAY_STATUSES.join(', ')}` });
+  }
   if (issues.length > 0) throw new ValidationError(issues);
 }

@@ -2,6 +2,7 @@ import { toLocalDateString } from '../../lib/dates';
 import type { SqlDatabase } from '../../db/types';
 import {
   MEAL_TYPES,
+  type DailyCalories,
   type DailyTotals,
   type FoodEntry,
   type FoodEntryPatch,
@@ -169,6 +170,20 @@ export class FoodEntryRepository {
       },
       byMeal,
     };
+  }
+
+  /**
+   * Total calories per day over an inclusive date range, oldest first.
+   * Only days with at least one entry are returned — an unlogged day is unknown, not zero.
+   */
+  async getDailyCalories(range: { from: string; to: string }): Promise<DailyCalories[]> {
+    const rows = await this.db.getAllAsync<DailyCalories>(
+      `SELECT date, SUM(calories) AS calories FROM food_entries
+       WHERE date >= ? AND date <= ?
+       GROUP BY date ORDER BY date`,
+      [range.from, range.to],
+    );
+    return rows.map((r) => ({ date: r.date, calories: round1(r.calories) }));
   }
 
   /**

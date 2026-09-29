@@ -36,6 +36,24 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_food_entries_date ON food_entries (date);
   `,
+  // v3: body weight (one weigh-in per date)
+  `
+  CREATE TABLE body_weight_entries (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    date       TEXT    NOT NULL UNIQUE,         -- local calendar date, YYYY-MM-DD
+    weight_kg  REAL    NOT NULL CHECK (weight_kg > 0),
+    created_at TEXT    NOT NULL,                -- ISO-8601 UTC timestamp
+    updated_at TEXT    NOT NULL
+  );
+  `,
+  // v4: per-day food log completeness (absent row = not marked)
+  `
+  CREATE TABLE food_log_days (
+    date       TEXT NOT NULL PRIMARY KEY,       -- local calendar date, YYYY-MM-DD
+    status     TEXT NOT NULL CHECK (status IN ('complete', 'incomplete')),
+    updated_at TEXT NOT NULL                    -- ISO-8601 UTC timestamp
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
