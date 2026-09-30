@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -51,6 +51,8 @@ export default function DailyLogScreen() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [status, setStatus] = useState<Status>(null);
   const [saving, setSaving] = useState(false);
+  // State updates land on the next render, so a fast double tap could slip past `saving`.
+  const savingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,7 +100,7 @@ export default function DailyLogScreen() {
   }
 
   async function handleSave() {
-    if (!repos || saving || formDate !== date) return;
+    if (!repos || savingRef.current || formDate !== date) return;
     const { values, errors: found } = parseForm(form, date);
     setErrors(found);
     if (Object.keys(found).length > 0) {
@@ -106,6 +108,7 @@ export default function DailyLogScreen() {
       return;
     }
 
+    savingRef.current = true;
     setSaving(true);
     try {
       setForm(formFromRecords(await saveDay(repos, date, values)));
@@ -119,6 +122,7 @@ export default function DailyLogScreen() {
         setStatus({ kind: 'error', text: `Couldn't save: ${e instanceof Error ? e.message : String(e)}` });
       }
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }

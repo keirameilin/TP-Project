@@ -163,4 +163,17 @@ describe('saving', () => {
     expect(formFromRecords(await loadDay(repos, yesterday))).toEqual(form({ sessionType: 'rest_day', weight: '70' }));
     expect((await loadDay(repos, DATE)).training?.sessionType).toBe('match');
   });
+
+  it('keeps one entry per day with the latest values when saves overlap', async () => {
+    await Promise.all([
+      save(form({ sessionType: 'match', duration: '90', rpe: 8, weight: '70' })),
+      save(form({ sessionType: 'gym_strength', duration: '45', rpe: 6, weight: '71' })),
+    ]);
+
+    expect(await repos.training.list()).toHaveLength(1);
+    expect(await repos.weight.list()).toHaveLength(1);
+    expect(formFromRecords(await loadDay(repos, DATE))).toEqual(
+      form({ sessionType: 'gym_strength', duration: '45', rpe: 6, weight: '71' }),
+    );
+  });
 });

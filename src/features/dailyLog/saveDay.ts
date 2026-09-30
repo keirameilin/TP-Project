@@ -2,7 +2,7 @@ import type { SqlDatabase } from '../../db/types';
 import { BodyWeightRepository, type BodyWeightEntry } from '../bodyweight';
 import { FoodEntryRepository, type DailyTotals, type FoodEntry } from '../nutrition';
 import { TrainingSessionRepository, type TrainingSession } from '../training';
-import type { DailyLogValues } from './form';
+import type { DailyLogValues, TrainingValues } from './form';
 
 export interface DailyLogRepos {
   training: TrainingSessionRepository;
@@ -55,9 +55,7 @@ export async function saveDay(repos: DailyLogRepos, date: string, values: DailyL
 
   let training = existing.training;
   if (values.training) {
-    training = training
-      ? await repos.training.update(training.id, values.training)
-      : await repos.training.create({ date, ...values.training });
+    training = await upsertTraining(repos, date, training, values.training);
   } else if (training) {
     await repos.training.delete(training.id);
     training = null;
@@ -72,4 +70,29 @@ export async function saveDay(repos: DailyLogRepos, date: string, values: DailyL
   }
 
   return { training, weight };
+}
+
+/**
+ * Saves the day's one training session, latest save winning. If another save created the session
+ * after `existing` was read (e.g. a double tap), the create fails on the unique date, so fall back
+ * to updating the session that won the race.
+ */
+async function upsertTraining(
+  repos: DailyLogRepos,
+  date: string,
+  existing: TrainingSession | null,
+  values: TrainingValues,
+): Promise<TrainingSession | null> {
+  if (existing) {
+    const updated = await repos.training.update(existing.id, values);
+    if (updated) return updated;
+    // Deleted since it was read; recreate below.
+  }
+  try {
+    return await repos.training.create({ date, ...values });
+  } catch (e) {
+    const current = await repos.training.getByDate(date);
+    if (!current) throw e;
+    return repos.training.update(current.id, values);
+  }
 }
