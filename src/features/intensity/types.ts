@@ -1,13 +1,10 @@
-export const HEALTH_SOURCES = ['apple_health', 'health_connect'] as const;
-export type HealthSource = (typeof HEALTH_SOURCES)[number];
-
 export interface HeartRateSample {
   /** Epoch milliseconds. */
   time: number;
   bpm: number;
 }
 
-/** One watch workout as read from Apple Health or Health Connect. */
+/** One workout's heart-rate samples and calories, from whatever source provides them. */
 export interface WorkoutInput {
   /** Epoch milliseconds. */
   start: number;
@@ -38,12 +35,4 @@ export interface WorkoutAnalysis {
   trimp: number;
   /** The max heart rate the zones were computed with. */
   maxHeartRate: number;
-}
-
-export interface WorkoutMetrics extends WorkoutAnalysis {
-  /** Local calendar date, YYYY-MM-DD. One record per date. */
-  date: string;
-  source: HealthSource;
-  /** ISO-8601 UTC timestamp. */
-  importedAt: string;
 }

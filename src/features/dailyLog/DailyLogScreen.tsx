@@ -15,7 +15,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDatabase } from '../../db/database';
 import { addDays, toLocalDateString } from '../../lib/dates';
 import { ValidationError } from '../../lib/validation';
-import { WatchEffortPanel } from '../intensity/WatchEffortPanel';
 import { RPE_MAX, RPE_MIN, type SessionType } from '../training';
 import { FoodSection } from './FoodSection';
 import {
@@ -239,11 +238,6 @@ export default function DailyLogScreen() {
                       ))}
                     </View>
                     <FieldError message={errors.rpe} />
-                    <WatchEffortPanel
-                      date={date}
-                      rpe={form.rpe}
-                      durationMinutes={/^\d+$/.test(form.duration.trim()) ? Number(form.duration) : null}
-                    />
                   </>
                 ) : null}
               </Section>
