@@ -16,7 +16,7 @@ import {
   type FoodItemForm,
 } from './form';
 import { loadDayFood, type DailyLogRepos, type DayFood } from './saveDay';
-import { ACCENT, Chip, Field, FieldError, Section, styles as ui } from './ui';
+import { ACCENT, Field, FieldError, Section, styles as ui } from './ui';
 
 const MEAL_LABELS: Record<MealType, string> = {
   breakfast: 'Breakfast',
@@ -50,6 +50,8 @@ export function FoodSection({ repos, date }: { repos: DailyLogRepos; date: strin
   const [scanning, setScanning] = useState(false);
   // Shown under the photo buttons after an estimate fills the form.
   const [scanNote, setScanNote] = useState<string | null>(null);
+  // The add form stays hidden until a photo estimate fills it or the user picks "Add manually".
+  const [formOpen, setFormOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setFood(await loadDayFood(repos, date));
@@ -114,11 +116,23 @@ export function FoodSection({ repos, date }: { repos: DailyLogRepos; date: strin
     if (found) {
       setErrors(found);
     } else {
-      // Keep the meal selected — people usually log several items for the same meal.
-      setItem(emptyFoodItem(item.mealType));
-      setErrors({});
-      setScanNote(null);
+      closeForm();
     }
+  }
+
+  function openManualForm() {
+    setItem(emptyFoodItem(item.mealType));
+    setErrors({});
+    setScanNote(null);
+    setFormOpen(true);
+  }
+
+  /** Back to the photo buttons. Keeps the meal selected — people usually log several items per meal. */
+  function closeForm() {
+    setItem(emptyFoodItem(item.mealType));
+    setErrors({});
+    setScanNote(null);
+    setFormOpen(false);
   }
 
   /** Photo → Claude estimate → fills the add form for the user to check before adding. */
@@ -135,6 +149,7 @@ export function FoodSection({ repos, date }: { repos: DailyLogRepos; date: strin
       setScanNote(
         `Estimated from photo${estimate.portion ? ` (${estimate.portion})` : ''}. Check the numbers, then tap Add food.`,
       );
+      setFormOpen(true);
     } catch (e) {
       setErrors({ form: errorMessage(e) });
     } finally {
@@ -257,14 +272,31 @@ export function FoodSection({ repos, date }: { repos: DailyLogRepos; date: strin
           </View>
         ) : null}
         {scanNote ? <Text style={styles.scanNote}>{scanNote}</Text> : null}
-        <FoodItemEditor
-          item={item}
-          errors={errors}
-          onChange={updateNew}
-          onSubmit={handleAdd}
-          submitLabel="Add food"
-          busy={busy}
-        />
+        {formOpen ? (
+          <FoodItemEditor
+            item={item}
+            errors={errors}
+            onChange={updateNew}
+            onSubmit={handleAdd}
+            submitLabel="Add food"
+            busy={busy}
+            onCancel={closeForm}
+          />
+        ) : (
+          <>
+            {/* Photo errors would otherwise live inside the hidden form. */}
+            <FieldError message={errors.form} />
+            <Pressable
+              accessibilityRole="button"
+              onPress={openManualForm}
+              disabled={scanning || busy}
+              hitSlop={8}
+              style={({ pressed }) => [styles.manualButton, (pressed || scanning) && styles.pressed]}
+            >
+              <Text style={styles.manualButtonText}>✏️ Add manually</Text>
+            </Pressable>
+          </>
+        )}
       </View>
     </Section>
   );
@@ -283,6 +315,48 @@ function PhotoButton({ label, onPress, disabled }: { label: string; onPress: () 
   );
 }
 
+/** A one-line meal picker that expands into the four options when tapped. */
+function MealDropdown({ value, onChange }: { value: MealType; onChange: (meal: MealType) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Meal: ${MEAL_LABELS[value]}`}
+        accessibilityHint="Opens the list of meals"
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen((o) => !o)}
+        style={({ pressed }) => [styles.dropdown, open && styles.dropdownOpen, pressed && styles.pressed]}
+      >
+        <Text style={styles.dropdownLabel}>Meal</Text>
+        <Text style={styles.dropdownValue}>{MEAL_LABELS[value]}</Text>
+        <Text style={styles.dropdownCaret}>{open ? '▴' : '▾'}</Text>
+      </Pressable>
+      {open ? (
+        <View style={styles.dropdownList}>
+          {MEAL_TYPES.map((meal) => (
+            <Pressable
+              key={meal}
+              accessibilityRole="button"
+              accessibilityState={{ selected: meal === value }}
+              onPress={() => {
+                onChange(meal);
+                setOpen(false);
+              }}
+              style={({ pressed }) => [styles.dropdownOption, pressed && styles.dropdownOptionPressed]}
+            >
+              <Text style={[styles.dropdownOptionText, meal === value && styles.dropdownOptionSelected]}>
+                {MEAL_LABELS[meal]}
+              </Text>
+              {meal === value ? <Text style={styles.dropdownCheck}>✓</Text> : null}
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function FoodItemEditor(props: {
   item: FoodItemForm;
   errors: FoodItemErrors;
@@ -295,16 +369,7 @@ function FoodItemEditor(props: {
   const { item, errors, onChange } = props;
   return (
     <View style={styles.editor}>
-      <View style={ui.chips}>
-        {MEAL_TYPES.map((meal) => (
-          <Chip
-            key={meal}
-            label={MEAL_LABELS[meal]}
-            selected={item.mealType === meal}
-            onPress={() => onChange('mealType', meal)}
-          />
-        ))}
-      </View>
+      <MealDropdown value={item.mealType} onChange={(meal) => onChange('mealType', meal)} />
       <FieldError message={errors.mealType} />
       <View style={ui.grid}>
         <Field
@@ -384,12 +449,43 @@ const styles = StyleSheet.create({
   removeText: { fontSize: 16, color: '#9aa0a6' },
   editCard: { borderWidth: 1.5, borderColor: ACCENT, borderRadius: 10, padding: 12, marginVertical: 4 },
   editor: { gap: 8 },
+  dropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#dadce0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+    gap: 8,
+  },
+  dropdownOpen: { borderColor: ACCENT, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+  dropdownLabel: { fontSize: 14, color: '#5f6368' },
+  dropdownValue: { flex: 1, fontSize: 16, color: '#111', fontWeight: '600' },
+  dropdownCaret: { fontSize: 16, color: ACCENT },
+  dropdownList: {
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderColor: ACCENT,
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+  },
+  dropdownOption: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 11 },
+  dropdownOptionPressed: { backgroundColor: '#eef7f1' },
+  dropdownOptionText: { flex: 1, fontSize: 16, color: '#202124' },
+  dropdownOptionSelected: { color: ACCENT, fontWeight: '700' },
+  dropdownCheck: { fontSize: 16, color: ACCENT, fontWeight: '700' },
   addForm: { gap: 8, marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#eceef0' },
   addTitle: { fontSize: 15, fontWeight: '600', color: '#202124' },
   photoRow: { flexDirection: 'row', gap: 8 },
   photoButton: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center', backgroundColor: '#eef7f1' },
   photoButtonText: { color: ACCENT, fontSize: 15, fontWeight: '600' },
   scanning: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  manualButton: { alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 12 },
+  manualButtonText: { color: ACCENT, fontSize: 15, fontWeight: '600', textDecorationLine: 'underline' },
   scanNote: { fontSize: 13, color: '#3c4043', backgroundColor: '#fff8e1', borderRadius: 8, padding: 10 },
   buttons: { flexDirection: 'row', gap: 8, marginTop: 4 },
   submitButton: {
