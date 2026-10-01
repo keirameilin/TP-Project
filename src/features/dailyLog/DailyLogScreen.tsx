@@ -1,3 +1,4 @@
+import { Link } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDatabase } from '../../db/database';
 import { addDays, toLocalDateString } from '../../lib/dates';
 import { ValidationError } from '../../lib/validation';
+import { WatchEffortPanel } from '../intensity/WatchEffortPanel';
 import { RPE_MAX, RPE_MIN, type SessionType } from '../training';
 import { FoodSection } from './FoodSection';
 import {
@@ -153,7 +155,14 @@ export default function DailyLogScreen() {
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title}>⚽ Daily Log</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>⚽ Daily Log</Text>
+            <Link href="/settings" asChild>
+              <Pressable accessibilityRole="button" accessibilityLabel="Player settings" hitSlop={8} style={styles.settingsButton}>
+                <Text style={styles.settingsText}>⚙️ Player</Text>
+              </Pressable>
+            </Link>
+          </View>
           <View style={styles.dateNav}>
             <Pressable
               accessibilityRole="button"
@@ -230,6 +239,11 @@ export default function DailyLogScreen() {
                       ))}
                     </View>
                     <FieldError message={errors.rpe} />
+                    <WatchEffortPanel
+                      date={date}
+                      rpe={form.rpe}
+                      durationMinutes={/^\d+$/.test(form.duration.trim()) ? Number(form.duration) : null}
+                    />
                   </>
                 ) : null}
               </Section>
@@ -296,7 +310,10 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: PITCH },
   centered: { alignItems: 'center', justifyContent: 'center', padding: 24 },
   content: { padding: 16, paddingBottom: 48, gap: 16 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: 28, fontWeight: '800', color: ON_PITCH },
+  settingsButton: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, backgroundColor: 'rgba(255, 255, 255, 0.18)' },
+  settingsText: { color: ON_PITCH, fontSize: 14, fontWeight: '600' },
   loadErrorText: { color: ON_PITCH, fontSize: 15, textAlign: 'center' },
   dateNav: { flexDirection: 'row', alignItems: 'center', marginTop: -8 },
   dateText: { flex: 1, alignItems: 'center' },

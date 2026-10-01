@@ -54,6 +54,38 @@ const MIGRATIONS: string[] = [
     updated_at TEXT NOT NULL                    -- ISO-8601 UTC timestamp
   );
   `,
+  // v5: the player's profile (single row), used for heart-rate zones
+  `
+  CREATE TABLE player_profile (
+    id             INTEGER PRIMARY KEY CHECK (id = 1),
+    age            INTEGER NOT NULL CHECK (age BETWEEN 10 AND 100),
+    max_heart_rate INTEGER CHECK (max_heart_rate IS NULL OR max_heart_rate BETWEEN 120 AND 230),
+    updated_at     TEXT    NOT NULL             -- ISO-8601 UTC timestamp
+  );
+  `,
+  // v6: heart-rate and calorie metrics imported from a watch (one row per date)
+  `
+  CREATE TABLE workout_metrics (
+    date               TEXT    NOT NULL PRIMARY KEY,  -- local calendar date, YYYY-MM-DD
+    source             TEXT    NOT NULL CHECK (source IN ('apple_health', 'health_connect')),
+    workout_count      INTEGER NOT NULL CHECK (workout_count > 0),
+    start_time         TEXT    NOT NULL,              -- ISO-8601 UTC timestamps
+    end_time           TEXT    NOT NULL,
+    duration_minutes   REAL    NOT NULL CHECK (duration_minutes >= 0),
+    active_kcal        REAL    CHECK (active_kcal IS NULL OR active_kcal >= 0),
+    avg_heart_rate     REAL,
+    peak_heart_rate    REAL,
+    heart_rate_minutes REAL    NOT NULL CHECK (heart_rate_minutes >= 0),
+    zone1_minutes      REAL    NOT NULL,
+    zone2_minutes      REAL    NOT NULL,
+    zone3_minutes      REAL    NOT NULL,
+    zone4_minutes      REAL    NOT NULL,
+    zone5_minutes      REAL    NOT NULL,
+    trimp              REAL    NOT NULL CHECK (trimp >= 0),
+    max_heart_rate     INTEGER NOT NULL,              -- the max HR the zones were computed with
+    imported_at        TEXT    NOT NULL
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
