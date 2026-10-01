@@ -26,7 +26,7 @@ import {
   type FormField,
 } from './form';
 import { createDailyLogRepos, loadDay, saveDay, type DailyLogRepos } from './saveDay';
-import { ACCENT, Chip, Field, FieldError, Section, styles as ui } from './ui';
+import { ACCENT, Chip, Field, FieldError, ON_PITCH, ON_PITCH_MUTED, PITCH, Section, styles as ui } from './ui';
 
 const SESSION_OPTIONS: { type: SessionType; label: string; hint: string }[] = [
   { type: 'match', label: 'Match', hint: 'Competitive game' },
@@ -130,7 +130,7 @@ export default function DailyLogScreen() {
   if (loadError) {
     return (
       <SafeAreaView style={[styles.screen, styles.centered]}>
-        <Text style={ui.errorText}>{`Couldn't open your log: ${loadError}`}</Text>
+        <Text style={styles.loadErrorText}>{`Couldn't open your log: ${loadError}`}</Text>
       </SafeAreaView>
     );
   }
@@ -138,7 +138,7 @@ export default function DailyLogScreen() {
   if (!repos || formDate === null) {
     return (
       <SafeAreaView style={[styles.screen, styles.centered]}>
-        <ActivityIndicator />
+        <ActivityIndicator color={ON_PITCH} />
       </SafeAreaView>
     );
   }
@@ -153,7 +153,7 @@ export default function DailyLogScreen() {
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title}>Daily Log</Text>
+          <Text style={styles.title}>⚽ Daily Log</Text>
           <View style={styles.dateNav}>
             <Pressable
               accessibilityRole="button"
@@ -249,9 +249,11 @@ export default function DailyLogScreen() {
               </Section>
 
               {status ? (
-                <Text style={[styles.status, status.kind === 'error' ? ui.errorText : styles.savedText]}>
-                  {status.text}
-                </Text>
+                <View style={styles.statusBox}>
+                  <Text style={[styles.status, status.kind === 'error' ? ui.errorText : styles.savedText]}>
+                    {status.text}
+                  </Text>
+                </View>
               ) : null}
 
               <Pressable
@@ -260,11 +262,11 @@ export default function DailyLogScreen() {
                 disabled={saving}
                 style={({ pressed }) => [styles.saveButton, (pressed || saving) && styles.saveButtonPressed]}
               >
-                {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Save Day</Text>}
+                {saving ? <ActivityIndicator color={ACCENT} /> : <Text style={styles.saveText}>Save Day</Text>}
               </Pressable>
             </>
           ) : (
-            <ActivityIndicator style={styles.dayLoading} />
+            <ActivityIndicator color={ON_PITCH} style={styles.dayLoading} />
           )}
         </ScrollView>
       </KeyboardAvoidingView>
@@ -291,14 +293,15 @@ function formatDisplayDate(date: string): string {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: '#f4f5f7' },
+  screen: { flex: 1, backgroundColor: PITCH },
   centered: { alignItems: 'center', justifyContent: 'center', padding: 24 },
   content: { padding: 16, paddingBottom: 48, gap: 16 },
-  title: { fontSize: 28, fontWeight: '700', color: '#111' },
+  title: { fontSize: 28, fontWeight: '800', color: ON_PITCH },
+  loadErrorText: { color: ON_PITCH, fontSize: 15, textAlign: 'center' },
   dateNav: { flexDirection: 'row', alignItems: 'center', marginTop: -8 },
   dateText: { flex: 1, alignItems: 'center' },
-  dayLabel: { fontSize: 18, fontWeight: '600', color: '#111' },
-  date: { fontSize: 14, color: '#5f6368' },
+  dayLabel: { fontSize: 18, fontWeight: '700', color: ON_PITCH },
+  date: { fontSize: 14, color: ON_PITCH_MUTED },
   arrow: {
     width: 44,
     height: 44,
@@ -311,7 +314,7 @@ const styles = StyleSheet.create({
   arrowText: { fontSize: 28, lineHeight: 30, color: ACCENT },
   hidden: { opacity: 0 },
   backToToday: { alignSelf: 'center', marginTop: -8 },
-  backToTodayText: { color: ACCENT, fontSize: 14, fontWeight: '600' },
+  backToTodayText: { color: ON_PITCH, fontSize: 14, fontWeight: '600', textDecorationLine: 'underline' },
   dayLoading: { marginTop: 24 },
   rpeRow: { flexDirection: 'row', gap: 4 },
   rpeButton: {
@@ -326,14 +329,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   rpeText: { fontSize: 15, color: '#202124' },
+  statusBox: { backgroundColor: '#fff', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12 },
   status: { fontSize: 15, textAlign: 'center' },
   savedText: { color: ACCENT, fontWeight: '600' },
+  // White on the pitch, so the main action stands out.
   saveButton: {
-    backgroundColor: ACCENT,
+    backgroundColor: '#fff',
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
   },
   saveButtonPressed: { opacity: 0.7 },
-  saveText: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  saveText: { color: ACCENT, fontSize: 17, fontWeight: '700' },
 });

@@ -1,6 +1,7 @@
 import type { ValidationIssue } from '../../lib/validation';
 import { validateBodyWeight } from '../bodyweight/validation';
 import type { BodyWeightEntry } from '../bodyweight/types';
+import type { FoodEstimate } from '../foodPhoto/types';
 import type { FoodEntry, MealType, NewFoodEntry } from '../nutrition/types';
 import { validateFoodEntry } from '../nutrition/validation';
 import type { SessionType, TrainingSession } from '../training/types';
@@ -70,6 +71,18 @@ export function foodItemFromEntry(entry: FoodEntry): FoodItemForm {
     protein: String(entry.proteinG),
     carbs: String(entry.carbsG),
     fat: String(entry.fatG),
+  };
+}
+
+/** Fills the food form from a photo estimate, keeping the meal the user already picked. */
+export function foodItemFromEstimate(estimate: FoodEstimate, mealType: MealType): FoodItemForm {
+  return {
+    mealType,
+    foodName: estimate.foodName,
+    calories: String(estimate.calories),
+    protein: String(estimate.proteinG),
+    carbs: String(estimate.carbsG),
+    fat: String(estimate.fatG),
   };
 }
 

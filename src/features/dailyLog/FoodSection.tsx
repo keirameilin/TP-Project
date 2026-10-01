@@ -2,11 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ValidationError } from '../../lib/validation';
+import { pickFoodPhoto, requestFoodEstimate, type PhotoSource } from '../foodPhoto/photo';
 import { MEAL_TYPES, type FoodEntry, type MealType } from '../nutrition';
 import {
   defaultMealType,
   emptyFoodItem,
   foodItemFromEntry,
+  foodItemFromEstimate,
   issuesToErrors,
   parseFoodItem,
   type FoodItemErrors,
@@ -45,6 +47,9 @@ export function FoodSection({ repos, date }: { repos: DailyLogRepos; date: strin
   const [errors, setErrors] = useState<FoodItemErrors>({});
   const [editing, setEditing] = useState<Editing | null>(null);
   const [busy, setBusy] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  // Shown under the photo buttons after an estimate fills the form.
+  const [scanNote, setScanNote] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setFood(await loadDayFood(repos, date));
@@ -112,6 +117,28 @@ export function FoodSection({ repos, date }: { repos: DailyLogRepos; date: strin
       // Keep the meal selected — people usually log several items for the same meal.
       setItem(emptyFoodItem(item.mealType));
       setErrors({});
+      setScanNote(null);
+    }
+  }
+
+  /** Photo → Claude estimate → fills the add form for the user to check before adding. */
+  async function handleScan(source: PhotoSource) {
+    if (scanning || busy) return;
+    setScanning(true);
+    setErrors({});
+    setScanNote(null);
+    try {
+      const image = await pickFoodPhoto(source);
+      if (!image) return;
+      const estimate = await requestFoodEstimate(image);
+      setItem((current) => foodItemFromEstimate(estimate, current.mealType));
+      setScanNote(
+        `Estimated from photo${estimate.portion ? ` (${estimate.portion})` : ''}. Check the numbers, then tap Add food.`,
+      );
+    } catch (e) {
+      setErrors({ form: errorMessage(e) });
+    } finally {
+      setScanning(false);
     }
   }
 
@@ -219,6 +246,17 @@ export function FoodSection({ repos, date }: { repos: DailyLogRepos; date: strin
 
       <View style={styles.addForm}>
         <Text style={styles.addTitle}>Add food</Text>
+        <View style={styles.photoRow}>
+          <PhotoButton label="📷 Take photo" onPress={() => handleScan('camera')} disabled={scanning || busy} />
+          <PhotoButton label="🖼️ Choose photo" onPress={() => handleScan('library')} disabled={scanning || busy} />
+        </View>
+        {scanning ? (
+          <View style={styles.scanning}>
+            <ActivityIndicator color={ACCENT} />
+            <Text style={ui.hint}>Estimating macros from your photo…</Text>
+          </View>
+        ) : null}
+        {scanNote ? <Text style={styles.scanNote}>{scanNote}</Text> : null}
         <FoodItemEditor
           item={item}
           errors={errors}
@@ -229,6 +267,19 @@ export function FoodSection({ repos, date }: { repos: DailyLogRepos; date: strin
         />
       </View>
     </Section>
+  );
+}
+
+function PhotoButton({ label, onPress, disabled }: { label: string; onPress: () => void; disabled: boolean }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [styles.photoButton, (pressed || disabled) && styles.pressed]}
+    >
+      <Text style={styles.photoButtonText}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -335,6 +386,11 @@ const styles = StyleSheet.create({
   editor: { gap: 8 },
   addForm: { gap: 8, marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#eceef0' },
   addTitle: { fontSize: 15, fontWeight: '600', color: '#202124' },
+  photoRow: { flexDirection: 'row', gap: 8 },
+  photoButton: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center', backgroundColor: '#eef7f1' },
+  photoButtonText: { color: ACCENT, fontSize: 15, fontWeight: '600' },
+  scanning: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  scanNote: { fontSize: 13, color: '#3c4043', backgroundColor: '#fff8e1', borderRadius: 8, padding: 10 },
   buttons: { flexDirection: 'row', gap: 8, marginTop: 4 },
   submitButton: {
     flex: 1,

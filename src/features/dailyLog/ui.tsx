@@ -1,7 +1,12 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, type KeyboardTypeOptions } from 'react-native';
 
-export const ACCENT = '#1a7f4b';
+/** Solid pitch green behind the whole screen. */
+export const PITCH = '#1e7b3c';
+/** Darker pitch green for selected chips and buttons on the white cards. */
+export const ACCENT = '#14602c';
+export const ON_PITCH = '#ffffff';
+export const ON_PITCH_MUTED = 'rgba(255, 255, 255, 0.8)';
 export const ERROR = '#c5221f';
 
 export function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
