@@ -1,6 +1,7 @@
 import type { ValidationIssue } from '../../lib/validation';
+import { lbToKg, type BodyWeightEntry } from '../bodyweight/types';
+import { kgToDisplayLb, WEIGHT_RANGE_LB_MESSAGE } from '../bodyweight/units';
 import { validateBodyWeight } from '../bodyweight/validation';
-import type { BodyWeightEntry } from '../bodyweight/types';
 import type { FoodEstimate } from '../foodPhoto/types';
 import type { FoodEntry, MealType, NewFoodEntry } from '../nutrition/types';
 import { validateFoodEntry } from '../nutrition/validation';
@@ -12,6 +13,7 @@ export interface DailyLogForm {
   sessionType: SessionType | null;
   duration: string;
   rpe: number | null;
+  /** In pounds, as typed; stored in kg. */
   weight: string;
 }
 
@@ -124,7 +126,10 @@ export function issuesToErrors<F extends string>(issues: ValidationIssue[]): Par
   const errors: Partial<Record<string, string>> = {};
   for (const issue of issues) {
     const field = DATA_FIELD_TO_FORM[issue.field];
-    if (field) {
+    if (issue.field === 'weightKg') {
+      // The data layer's message quotes the range in kg; the form is in pounds.
+      errors.weight ??= WEIGHT_RANGE_LB_MESSAGE;
+    } else if (field) {
       errors[field] ??= `${FIELD_LABELS[field]} ${issue.message}`;
     } else {
       errors.form ??= `${issue.field} ${issue.message}`;
@@ -155,7 +160,8 @@ export function parseForm(form: DailyLogForm, date: string): { values: DailyLogV
     issues.push(...validateSession({ date, notes: null, ...training }));
   }
 
-  const weightKg = parseNumber(form.weight);
+  const weightLb = parseNumber(form.weight);
+  const weightKg = weightLb === null ? null : lbToKg(weightLb);
   if (weightKg !== null) issues.push(...validateBodyWeight({ date, weightKg }));
 
   const fromValidators = issuesToErrors<FormField>(issues);
@@ -204,6 +210,6 @@ export function formFromRecords(records: {
     sessionType: training?.sessionType ?? null,
     duration: numberText(training?.durationMinutes),
     rpe: training?.rpe ?? null,
-    weight: numberText(weight?.weightKg),
+    weight: weight ? String(kgToDisplayLb(weight.weightKg)) : '',
   };
 }

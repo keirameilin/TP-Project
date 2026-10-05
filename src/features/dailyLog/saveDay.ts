@@ -1,6 +1,7 @@
 import type { SqlDatabase } from '../../db/types';
 import { BodyWeightRepository, type BodyWeightEntry } from '../bodyweight';
 import { FoodEntryRepository, type DailyTotals, type FoodEntry } from '../nutrition';
+import { PlayerProfileRepository } from '../profile';
 import { TrainingSessionRepository, type TrainingSession } from '../training';
 import type { DailyLogValues, TrainingValues } from './form';
 
@@ -8,6 +9,7 @@ export interface DailyLogRepos {
   training: TrainingSessionRepository;
   food: FoodEntryRepository;
   weight: BodyWeightRepository;
+  profile: PlayerProfileRepository;
 }
 
 export interface DayRecords {
@@ -25,6 +27,7 @@ export function createDailyLogRepos(db: SqlDatabase, options: { now?: () => Date
     training: new TrainingSessionRepository(db, options),
     food: new FoodEntryRepository(db, options),
     weight: new BodyWeightRepository(db, options),
+    profile: new PlayerProfileRepository(db, options),
   };
 }
 

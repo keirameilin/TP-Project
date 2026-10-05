@@ -86,6 +86,15 @@ const MIGRATIONS: string[] = [
     imported_at        TEXT    NOT NULL
   );
   `,
+  // v7: profile details for the baseline calorie/macro targets (all optional)
+  `
+  ALTER TABLE player_profile ADD COLUMN sex TEXT
+    CHECK (sex IS NULL OR sex IN ('male', 'female'));
+  ALTER TABLE player_profile ADD COLUMN height_cm REAL
+    CHECK (height_cm IS NULL OR height_cm BETWEEN 100 AND 250);
+  ALTER TABLE player_profile ADD COLUMN level TEXT
+    CHECK (level IS NULL OR level IN ('recreational', 'competitive', 'professional'));
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

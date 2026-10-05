@@ -1,9 +1,11 @@
+import { Link } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ValidationError } from '../../lib/validation';
 import { pickFoodPhoto, requestFoodEstimate, type PhotoSource } from '../foodPhoto/photo';
-import { MEAL_TYPES, type FoodEntry, type MealType } from '../nutrition';
+import { MEAL_TYPES, type FoodEntry, type Macros, type MealType } from '../nutrition';
+import type { BaselineTargets, TargetsResult } from '../targets';
 import {
   defaultMealType,
   emptyFoodItem,
@@ -16,7 +18,7 @@ import {
   type FoodItemForm,
 } from './form';
 import { loadDayFood, type DailyLogRepos, type DayFood } from './saveDay';
-import { ACCENT, Field, FieldError, Section, styles as ui } from './ui';
+import { ACCENT, Dropdown, Field, FieldError, Section, styles as ui } from './ui';
 
 const MEAL_LABELS: Record<MealType, string> = {
   breakfast: 'Breakfast',
@@ -40,7 +42,8 @@ interface Editing {
  * Food logged item by item. Each item is written as soon as it's added or updated (not on
  * "Save Day"), and the day's totals are summed by the data layer. Tapping an item edits it in place.
  */
-export function FoodSection({ repos, date }: { repos: DailyLogRepos; date: string }) {
+export function FoodSection(props: { repos: DailyLogRepos; date: string; targets: TargetsResult | null }) {
+  const { repos, date, targets } = props;
   const [food, setFood] = useState<DayFood | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [item, setItem] = useState<FoodItemForm>(() => emptyFoodItem(defaultMealType(new Date())));
@@ -192,9 +195,22 @@ export function FoodSection({ repos, date }: { repos: DailyLogRepos; date: strin
       {food ? (
         <>
           <View style={styles.totals}>
-            <Text style={styles.totalsLabel}>Total eaten</Text>
-            <Text style={styles.totalsKcal}>{kcal(food.totals.totals.calories)}</Text>
-            <Text style={styles.totalsMacros}>{macroLine(food.totals.totals)}</Text>
+            {targets?.ok ? (
+              <EatenVsTarget eaten={food.totals.totals} target={targets.targets} />
+            ) : (
+              <>
+                <Text style={styles.totalsLabel}>Total eaten</Text>
+                <Text style={styles.totalsKcal}>{kcal(food.totals.totals.calories)}</Text>
+                <Text style={styles.totalsMacros}>{macroLine(food.totals.totals)}</Text>
+                {targets ? (
+                  <Link href="/settings" asChild>
+                    <Pressable accessibilityRole="link" hitSlop={6}>
+                      <Text style={styles.targetsLink}>Set up ⚙️ Player to see your daily targets ›</Text>
+                    </Pressable>
+                  </Link>
+                ) : null}
+              </>
+            )}
           </View>
 
           {food.entries.length === 0 ? (
@@ -302,6 +318,32 @@ export function FoodSection({ repos, date }: { repos: DailyLogRepos; date: strin
   );
 }
 
+/** The day's intake against the baseline targets, with a calorie progress bar. */
+function EatenVsTarget({ eaten, target }: { eaten: Macros; target: BaselineTargets }) {
+  const progress = Math.min(1, target.calories > 0 ? eaten.calories / target.calories : 0);
+  const pair = (label: string, value: number, goal: number) => `${label} ${Math.round(value)}/${goal}g`;
+  return (
+    <>
+      <Text style={styles.totalsLabel}>Eaten vs. baseline target</Text>
+      <Text style={styles.totalsKcal}>
+        {Math.round(eaten.calories).toLocaleString()}
+        <Text style={styles.totalsTarget}> / {target.calories.toLocaleString()} kcal</Text>
+      </Text>
+      <View
+        style={styles.progressTrack}
+        accessibilityRole="progressbar"
+        accessibilityValue={{ min: 0, max: target.calories, now: Math.round(eaten.calories) }}
+      >
+        <View style={[styles.progressBar, { width: `${progress * 100}%` }]} />
+      </View>
+      <Text style={styles.totalsMacros}>
+        {pair('P', eaten.proteinG, target.proteinG)} · {pair('C', eaten.carbsG, target.carbsG)} ·{' '}
+        {pair('F', eaten.fatG, target.fatG)}
+      </Text>
+    </>
+  );
+}
+
 function PhotoButton({ label, onPress, disabled }: { label: string; onPress: () => void; disabled: boolean }) {
   return (
     <Pressable
@@ -315,47 +357,7 @@ function PhotoButton({ label, onPress, disabled }: { label: string; onPress: () 
   );
 }
 
-/** A one-line meal picker that expands into the four options when tapped. */
-function MealDropdown({ value, onChange }: { value: MealType; onChange: (meal: MealType) => void }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Meal: ${MEAL_LABELS[value]}`}
-        accessibilityHint="Opens the list of meals"
-        accessibilityState={{ expanded: open }}
-        onPress={() => setOpen((o) => !o)}
-        style={({ pressed }) => [styles.dropdown, open && styles.dropdownOpen, pressed && styles.pressed]}
-      >
-        <Text style={styles.dropdownLabel}>Meal</Text>
-        <Text style={styles.dropdownValue}>{MEAL_LABELS[value]}</Text>
-        <Text style={styles.dropdownCaret}>{open ? '▴' : '▾'}</Text>
-      </Pressable>
-      {open ? (
-        <View style={styles.dropdownList}>
-          {MEAL_TYPES.map((meal) => (
-            <Pressable
-              key={meal}
-              accessibilityRole="button"
-              accessibilityState={{ selected: meal === value }}
-              onPress={() => {
-                onChange(meal);
-                setOpen(false);
-              }}
-              style={({ pressed }) => [styles.dropdownOption, pressed && styles.dropdownOptionPressed]}
-            >
-              <Text style={[styles.dropdownOptionText, meal === value && styles.dropdownOptionSelected]}>
-                {MEAL_LABELS[meal]}
-              </Text>
-              {meal === value ? <Text style={styles.dropdownCheck}>✓</Text> : null}
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-    </View>
-  );
-}
+const MEAL_OPTIONS = MEAL_TYPES.map((meal) => ({ value: meal, label: MEAL_LABELS[meal] }));
 
 function FoodItemEditor(props: {
   item: FoodItemForm;
@@ -369,8 +371,13 @@ function FoodItemEditor(props: {
   const { item, errors, onChange } = props;
   return (
     <View style={styles.editor}>
-      <MealDropdown value={item.mealType} onChange={(meal) => onChange('mealType', meal)} />
-      <FieldError message={errors.mealType} />
+      <Dropdown
+        label="Meal"
+        value={item.mealType}
+        options={MEAL_OPTIONS}
+        onChange={(meal) => onChange('mealType', meal)}
+        error={errors.mealType}
+      />
       <View style={ui.grid}>
         <Field
           label="Food"
@@ -432,6 +439,10 @@ const styles = StyleSheet.create({
   totalsLabel: { fontSize: 13, color: '#3c4043' },
   totalsKcal: { fontSize: 24, fontWeight: '700', color: ACCENT },
   totalsMacros: { fontSize: 14, color: '#3c4043' },
+  totalsTarget: { fontSize: 15, fontWeight: '500', color: '#3c4043' },
+  progressTrack: { height: 8, borderRadius: 4, backgroundColor: '#cfe6d7', overflow: 'hidden', marginVertical: 4 },
+  progressBar: { height: '100%', borderRadius: 4, backgroundColor: ACCENT },
+  targetsLink: { fontSize: 13, color: ACCENT, fontWeight: '600', marginTop: 4 },
   meal: { gap: 4, marginTop: 4 },
   mealHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   mealTitle: { fontSize: 15, fontWeight: '600', color: '#202124' },
@@ -449,35 +460,6 @@ const styles = StyleSheet.create({
   removeText: { fontSize: 16, color: '#9aa0a6' },
   editCard: { borderWidth: 1.5, borderColor: ACCENT, borderRadius: 10, padding: 12, marginVertical: 4 },
   editor: { gap: 8 },
-  dropdown: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#dadce0',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: '#fff',
-    gap: 8,
-  },
-  dropdownOpen: { borderColor: ACCENT, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
-  dropdownLabel: { fontSize: 14, color: '#5f6368' },
-  dropdownValue: { flex: 1, fontSize: 16, color: '#111', fontWeight: '600' },
-  dropdownCaret: { fontSize: 16, color: ACCENT },
-  dropdownList: {
-    borderWidth: 1,
-    borderTopWidth: 0,
-    borderColor: ACCENT,
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
-    backgroundColor: '#fff',
-    overflow: 'hidden',
-  },
-  dropdownOption: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 11 },
-  dropdownOptionPressed: { backgroundColor: '#eef7f1' },
-  dropdownOptionText: { flex: 1, fontSize: 16, color: '#202124' },
-  dropdownOptionSelected: { color: ACCENT, fontWeight: '700' },
-  dropdownCheck: { fontSize: 16, color: ACCENT, fontWeight: '700' },
   addForm: { gap: 8, marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#eceef0' },
   addTitle: { fontSize: 15, fontWeight: '600', color: '#202124' },
   photoRow: { flexDirection: 'row', gap: 8 },

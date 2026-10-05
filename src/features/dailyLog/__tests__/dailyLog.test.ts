@@ -1,4 +1,5 @@
 import { createTestDatabase } from '../../../test-utils/testDatabase';
+import { lbToKg } from '../../bodyweight';
 import {
   defaultMealType,
   EMPTY_FORM,
@@ -29,12 +30,12 @@ describe('parseForm', () => {
     expect(parseForm(EMPTY_FORM, DATE).errors.form).toMatch(/Nothing to save/);
   });
 
-  it('parses training and weight', () => {
-    const { values, errors } = parseForm(form({ sessionType: 'match', duration: '90', rpe: 8, weight: '72,4' }), DATE);
+  it('parses training and weight, converting pounds to kg', () => {
+    const { values, errors } = parseForm(form({ sessionType: 'match', duration: '90', rpe: 8, weight: '160,5' }), DATE);
     expect(errors).toEqual({});
     expect(values).toEqual({
       training: { sessionType: 'match', durationMinutes: 90, rpe: 8 },
-      weightKg: 72.4,
+      weightKg: lbToKg(160.5),
     });
   });
 
@@ -48,7 +49,7 @@ describe('parseForm', () => {
     const { errors } = parseForm(form({ sessionType: 'technical_tactical', weight: '5' }), DATE);
     expect(errors.duration).toBe('Duration is required');
     expect(errors.rpe).toBe('Pick an effort rating');
-    expect(errors.weight).toBe('Weight must be a number from 20 to 400');
+    expect(errors.weight).toBe('Weight must be between 45 and 880 lb');
   });
 
   it('flags a non-whole duration', () => {
@@ -108,7 +109,7 @@ describe('saving', () => {
   const addFood = (overrides: Partial<FoodItemForm>) => repos.food.create(parseFoodItem(foodItem(overrides), DATE).entry);
 
   it('writes training and weight and round-trips into the form', async () => {
-    const full = form({ sessionType: 'match', duration: '90', rpe: 8, weight: '72.4' });
+    const full = form({ sessionType: 'match', duration: '90', rpe: 8, weight: '160.4' });
     await save(full);
     expect(formFromRecords(await loadDay(repos, DATE))).toEqual(full);
   });
@@ -123,12 +124,12 @@ describe('saving', () => {
 
   it('deletes sections that were cleared, without touching food', async () => {
     await addFood({});
-    await save(form({ sessionType: 'match', duration: '90', rpe: 8, weight: '70' }));
-    await save(form({ weight: '71' }));
+    await save(form({ sessionType: 'match', duration: '90', rpe: 8, weight: '160' }));
+    await save(form({ weight: '161' }));
 
     const day = await loadDay(repos, DATE);
     expect(day.training).toBeNull();
-    expect(day.weight?.weightKg).toBe(71);
+    expect(day.weight?.weightKg).toBeCloseTo(lbToKg(161), 10);
     expect((await loadDayFood(repos, DATE)).entries).toHaveLength(1);
   });
 
@@ -157,23 +158,23 @@ describe('saving', () => {
 
   it('saves and reloads a past day separately from today', async () => {
     const yesterday = '2026-09-29';
-    await saveDay(repos, yesterday, parseForm(form({ sessionType: 'rest_day', weight: '70' }), yesterday).values);
+    await saveDay(repos, yesterday, parseForm(form({ sessionType: 'rest_day', weight: '160' }), yesterday).values);
     await save(form({ sessionType: 'match', duration: '90', rpe: 8 }));
 
-    expect(formFromRecords(await loadDay(repos, yesterday))).toEqual(form({ sessionType: 'rest_day', weight: '70' }));
+    expect(formFromRecords(await loadDay(repos, yesterday))).toEqual(form({ sessionType: 'rest_day', weight: '160' }));
     expect((await loadDay(repos, DATE)).training?.sessionType).toBe('match');
   });
 
   it('keeps one entry per day with the latest values when saves overlap', async () => {
     await Promise.all([
-      save(form({ sessionType: 'match', duration: '90', rpe: 8, weight: '70' })),
-      save(form({ sessionType: 'gym_strength', duration: '45', rpe: 6, weight: '71' })),
+      save(form({ sessionType: 'match', duration: '90', rpe: 8, weight: '160' })),
+      save(form({ sessionType: 'gym_strength', duration: '45', rpe: 6, weight: '161' })),
     ]);
 
     expect(await repos.training.list()).toHaveLength(1);
     expect(await repos.weight.list()).toHaveLength(1);
     expect(formFromRecords(await loadDay(repos, DATE))).toEqual(
-      form({ sessionType: 'gym_strength', duration: '45', rpe: 6, weight: '71' }),
+      form({ sessionType: 'gym_strength', duration: '45', rpe: 6, weight: '161' }),
     );
   });
 });

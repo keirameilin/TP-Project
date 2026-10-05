@@ -1,5 +1,5 @@
-import { Link } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { Link, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDatabase } from '../../db/database';
 import { addDays, toLocalDateString } from '../../lib/dates';
 import { ValidationError } from '../../lib/validation';
+import { loadBaselineTargets, type TargetsResult } from '../targets';
 import { RPE_MAX, RPE_MIN, type SessionType } from '../training';
 import { FoodSection } from './FoodSection';
 import {
@@ -54,6 +55,7 @@ export default function DailyLogScreen() {
   const [saving, setSaving] = useState(false);
   // State updates land on the next render, so a fast double tap could slip past `saving`.
   const savingRef = useRef(false);
+  const [targets, setTargets] = useState<TargetsResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +90,26 @@ export default function DailyLogScreen() {
     };
   }, [repos, date]);
 
+  // Runs on focus too, so profile changes made on the settings screen show up on return.
+  useFocusEffect(
+    useCallback(() => {
+      if (!repos) return;
+      let cancelled = false;
+      loadBaselineTargets(repos, date).then(
+        (result) => {
+          if (!cancelled) setTargets(result);
+        },
+        () => {
+          // Targets are a nice-to-have here; the log still works without them.
+          if (!cancelled) setTargets(null);
+        },
+      );
+      return () => {
+        cancelled = true;
+      };
+    }, [repos, date]),
+  );
+
   function goToDate(next: string) {
     setDate(next);
     setErrors({});
@@ -114,6 +136,8 @@ export default function DailyLogScreen() {
     try {
       setForm(formFromRecords(await saveDay(repos, date, values)));
       setStatus({ kind: 'saved', text: 'Day saved.' });
+      // A new weigh-in changes the targets.
+      setTargets(await loadBaselineTargets(repos, date).catch(() => null));
     } catch (e) {
       if (e instanceof ValidationError) {
         const mapped = issuesToErrors<FormField>(e.issues);
@@ -243,15 +267,15 @@ export default function DailyLogScreen() {
               </Section>
 
               {/* Keyed by date so switching days resets its list and half-typed item. */}
-              <FoodSection key={date} repos={repos} date={date} />
+              <FoodSection key={date} repos={repos} date={date} targets={targets} />
 
               <Section title="Body weight" subtitle="Optional">
                 <Field
-                  label="Weight (kg)"
+                  label="Weight (lb)"
                   value={form.weight}
                   onChangeText={(t) => update('weight', t)}
                   error={errors.weight}
-                  placeholder="e.g. 72.5"
+                  placeholder="e.g. 160"
                   fullWidth
                 />
               </Section>
