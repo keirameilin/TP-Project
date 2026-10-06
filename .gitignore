@@ -42,3 +42,6 @@ yarn-error.*
 
 # test coverage
 coverage/
+
+# Source papers are kept locally only (copyright); see docs/sources/README.md
+docs/sources/*.pdf
