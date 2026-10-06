@@ -64,7 +64,7 @@ describe('describeMaintenance', () => {
       incompleteDays: 1,
     });
     expect(lines[2]).toBe(
-      "2 unusually low days were left out as possibly incomplete (2026-09-20, 2026-09-27). Mark them complete on the Daily Log if they're right.",
+      "2 unusually low days were left out as possibly incomplete (2026-09-20, 2026-09-27). Mark them complete on the Food tab if they're right.",
     );
     expect(lines[3]).toBe('1 day marked incomplete was left out.');
     expect(describeMaintenance({ ...estimate, suspectDays: [{ date: '2026-09-20', calories: 900 }] })[2]).toContain(

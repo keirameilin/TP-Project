@@ -8,7 +8,7 @@ export interface EstimateFoodRequest {
 export const ESTIMATE_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export type EstimateMediaType = (typeof ESTIMATE_MEDIA_TYPES)[number];
 
-/** Claude's estimate for the food in a photo. Macros are for the whole portion shown. */
+/** The model's estimate for the food in a photo. Macros are for the whole portion shown. */
 export interface FoodEstimate {
   foodName: string;
   /** What the numbers are for, e.g. "1 wrap, about 250 g". */

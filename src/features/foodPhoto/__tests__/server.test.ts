@@ -1,18 +1,23 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { GoogleGenAI } from '@google/genai';
 
 import { foodItemFromEstimate } from '../../dailyLog/form';
 import { handleEstimateRequest, parseEstimateRequest } from '../server';
 
 const IMAGE = 'aGVsbG8='; // any base64
 
-/** A stand-in for the Anthropic client whose parse() returns the given response. */
+/** A stand-in for the Gemini client whose interactions.create() returns the given response. */
 function fakeClient(response: object) {
-  const parse = jest.fn().mockResolvedValue(response);
-  const client = { beta: { messages: { parse } } } as unknown as Anthropic;
-  return { client, parse };
+  const create = jest.fn().mockResolvedValue(response);
+  const client = { interactions: { create } } as unknown as GoogleGenAI;
+  return { client, create };
 }
 
-const post = (body: unknown, client: Anthropic) =>
+/** A stand-in whose interactions.create() fails with the given error. */
+function failingClient(error: unknown) {
+  return { interactions: { create: jest.fn().mockRejectedValue(error) } } as unknown as GoogleGenAI;
+}
+
+const post = (body: unknown, client: GoogleGenAI) =>
   handleEstimateRequest(
     new Request('http://localhost/api/estimate-food', {
       method: 'POST',
@@ -21,9 +26,9 @@ const post = (body: unknown, client: Anthropic) =>
     () => client,
   );
 
-const parsed = (overrides: object = {}) => ({
-  stop_reason: 'end_turn',
-  parsed_output: {
+const answered = (overrides: object = {}) => ({
+  status: 'completed',
+  output_text: JSON.stringify({
     isFood: true,
     foodName: ' Chicken wrap ',
     portion: '1 wrap, about 250 g',
@@ -32,12 +37,12 @@ const parsed = (overrides: object = {}) => ({
     carbsG: 50,
     fatG: 18.04,
     ...overrides,
-  },
+  }),
 });
 
 describe('POST /api/estimate-food', () => {
-  it('sends the photo to Claude and returns a cleaned-up estimate', async () => {
-    const { client, parse } = fakeClient(parsed());
+  it('sends the photo to Gemini and returns a cleaned-up estimate', async () => {
+    const { client, create } = fakeClient(answered());
     const res = await post({ image: IMAGE, mediaType: 'image/jpeg' }, client);
 
     expect(res.status).toBe(200);
@@ -53,43 +58,79 @@ describe('POST /api/estimate-food', () => {
       },
     });
 
-    const params = parse.mock.calls[0][0];
-    expect(params.model).toBe('claude-opus-5-5');
-    expect(params.messages[0].content[0]).toEqual({
-      type: 'image',
-      source: { type: 'base64', media_type: 'image/jpeg', data: IMAGE },
-    });
+    const params = create.mock.calls[0][0];
+    expect(params.model).toBe('gemini-3.5-flash-lite');
+    expect(params.store).toBe(false);
+    expect(create.mock.calls[0][1]).toEqual({ maxRetries: 0 });
+    expect(params.generation_config).toEqual({ thinking_level: 'low' });
+    expect(params.input).toContainEqual({ type: 'image', data: IMAGE, mime_type: 'image/jpeg' });
+    expect(params.response_format.schema.required).toEqual(
+      expect.arrayContaining(['isFood', 'foodName', 'portion', 'calories', 'proteinG', 'carbsG', 'fatG']),
+    );
   });
 
   it('clamps numbers into the food log’s valid ranges', async () => {
-    const { client } = fakeClient(parsed({ calories: 25000, proteinG: -3, carbsG: 2000, fatG: NaN }));
+    const { client } = fakeClient(answered({ calories: 25000, proteinG: -3, carbsG: 2000, fatG: -0.5 }));
     const { estimate } = await (await post({ image: IMAGE, mediaType: 'image/jpeg' }, client)).json();
     expect(estimate).toMatchObject({ calories: 10000, proteinG: 0, carbsG: 1000, fatG: 0 });
   });
 
   it('rejects a photo that is not food', async () => {
-    const { client } = fakeClient(parsed({ isFood: false }));
+    const { client } = fakeClient(answered({ isFood: false }));
     const res = await post({ image: IMAGE, mediaType: 'image/jpeg' }, client);
     expect(res.status).toBe(422);
     expect((await res.json()).error).toMatch(/doesn't seem to show food/);
   });
 
-  it('reports a refusal without reading the content', async () => {
-    const { client } = fakeClient({ stop_reason: 'refusal', parsed_output: null });
+  it('reports a photo the model would not answer for', async () => {
+    const { client } = fakeClient({ status: 'failed' });
     expect((await post({ image: IMAGE, mediaType: 'image/jpeg' }, client)).status).toBe(422);
   });
 
   it('reports an unparseable response', async () => {
-    const { client } = fakeClient({ stop_reason: 'end_turn', parsed_output: null });
-    expect((await post({ image: IMAGE, mediaType: 'image/jpeg' }, client)).status).toBe(502);
+    const notJson = fakeClient({ status: 'completed', output_text: 'Sorry, here is your estimate' });
+    expect((await post({ image: IMAGE, mediaType: 'image/jpeg' }, notJson.client)).status).toBe(502);
+    const wrongShape = fakeClient({ status: 'completed', output_text: '{"isFood":true}' });
+    expect((await post({ image: IMAGE, mediaType: 'image/jpeg' }, wrongShape.client)).status).toBe(502);
   });
 
-  it('rejects bad request bodies before calling Claude', async () => {
-    const { client, parse } = fakeClient(parsed());
+  it('maps Gemini errors to clear messages', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    const send = (error: unknown) => post({ image: IMAGE, mediaType: 'image/jpeg' }, failingClient(error));
+
+    const rateLimited = await send(Object.assign(new Error('quota'), { status: 429 }));
+    expect(rateLimited.status).toBe(429);
+    expect((await rateLimited.json()).error).toMatch(/try again in a minute/);
+
+    const dailyLimit = await send(
+      Object.assign(new Error('429'), { status: 429, body: 'Rate limit exceeded (limit: 20 requests per day on Free Tier)' }),
+    );
+    expect(dailyLimit.status).toBe(429);
+    expect((await dailyLimit.json()).error).toMatch(/used up/);
+
+    const badKey = await send(Object.assign(new Error('API key not valid'), { status: 403 }));
+    expect(badKey.status).toBe(500);
+    expect((await badKey.json()).error).toMatch(/not set up/);
+
+    const wrongKey = await send(Object.assign(new Error('400 API error occurred'), { status: 400, body: '{"reason":"API_KEY_INVALID"}' }));
+    expect(wrongKey.status).toBe(500);
+    expect((await wrongKey.json()).error).toMatch(/not set up/);
+
+    const slow = await send(new Error('Unexpected HTTP client error: Error: Request timed out'));
+    expect(slow.status).toBe(504);
+    expect((await slow.json()).error).toMatch(/took too long/);
+
+    const down = await send(Object.assign(new Error('overloaded'), { statusCode: 503 }));
+    expect(down.status).toBe(502);
+    expect((await down.json()).error).toMatch(/unavailable/);
+  });
+
+  it('rejects bad request bodies before calling Gemini', async () => {
+    const { client, create } = fakeClient(answered());
     expect((await post('not json', client)).status).toBe(400);
     expect((await post({ mediaType: 'image/jpeg' }, client)).status).toBe(400);
     expect((await post({ image: IMAGE, mediaType: 'image/gif' }, client)).status).toBe(400);
-    expect(parse).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it('returns a clean 500 if the client cannot be created', async () => {

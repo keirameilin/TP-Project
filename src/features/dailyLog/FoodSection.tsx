@@ -175,7 +175,7 @@ export function FoodSection(props: { repos: DailyLogRepos; date: string; targets
     }
   }
 
-  /** Photo → Claude estimate → fills the add form for the user to check before adding. */
+  /** Photo → AI estimate → fills the add form for the user to check before adding. */
   async function handleScan(source: PhotoSource) {
     if (scanning || busy) return;
     setScanning(true);

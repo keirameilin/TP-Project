@@ -39,15 +39,21 @@ export async function pickFoodPhoto(source: PhotoSource): Promise<string | null>
   return saved.base64;
 }
 
-/** Sends the photo to the server, which asks Claude for the food and its macros. */
+/** Sends the photo to the server, which asks Gemini for the food and its macros. */
 export async function requestFoodEstimate(image: string): Promise<FoodEstimate> {
   const request: EstimateFoodRequest = { image, mediaType: 'image/jpeg' };
   // Relative URL: Expo Router resolves it against the dev server, or the `origin` set for production.
-  const response = await fetch('/api/estimate-food', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
-  });
+  let response: Response;
+  try {
+    response = await fetch('/api/estimate-food', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+  } catch {
+    // fetch only throws when no answer came back at all.
+    throw new Error("Couldn't reach the estimate server. Check your connection and that the server is running.");
+  }
 
   let body: EstimateFoodResponse;
   try {

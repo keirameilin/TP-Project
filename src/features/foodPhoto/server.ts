@@ -1,9 +1,8 @@
 /**
- * Server-only: estimates a food photo's macros with Claude. Imported only by the
+ * Server-only: estimates a food photo's macros with Gemini. Imported only by the
  * /api/estimate-food route, so the API key and SDK never ship in the app bundle.
  */
-import Anthropic from '@anthropic-ai/sdk';
-import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
+import type { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 
 import { CALORIES_MAX, FOOD_NAME_MAX_LENGTH, MACRO_GRAMS_MAX } from '../nutrition/validation';
@@ -14,9 +13,13 @@ import {
   type FoodEstimate,
 } from './types';
 
-const MODEL = 'claude-opus-5-5';
+/**
+ * Has a free tier on the Gemini API, which is why this feature costs nothing to run. The larger
+ * gemini-3.8-flash is also free but allows only 20 requests a day and took about a minute a photo.
+ */
+const MODEL = 'gemini-3.5-flash-lite';
 
-/** Claude's per-image limit is 5 MB; the app sends a resized JPEG well under this. */
+/** The app sends a resized JPEG of a few hundred KB; this only stops oversized uploads. */
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 const SYSTEM_PROMPT = `You estimate the nutrition of food from a photo for a calorie and macro tracking app used by athletes.
@@ -50,6 +53,23 @@ export class EstimateError extends Error {
 const clamp = (n: number, max: number) => Math.min(Math.max(Number.isFinite(n) ? n : 0, 0), max);
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
+/** The model's JSON answer, or null if it isn't the shape that was asked for. */
+function parseEstimate(text: string): z.infer<typeof EstimateSchema> | null {
+  try {
+    const result = EstimateSchema.safeParse(JSON.parse(text));
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The HTTP status carried by an SDK error, if it has one. */
+function httpStatus(e: unknown): number | null {
+  const { status, statusCode } = (e ?? {}) as { status?: unknown; statusCode?: unknown };
+  if (typeof status === 'number') return status;
+  return typeof statusCode === 'number' ? statusCode : null;
+}
+
 /** Validates the request body; throws EstimateError(400) when it's unusable. */
 export function parseEstimateRequest(body: unknown): EstimateFoodRequest {
   const { image, mediaType } = (body ?? {}) as Partial<EstimateFoodRequest>;
@@ -66,32 +86,32 @@ export function parseEstimateRequest(body: unknown): EstimateFoodRequest {
   return { image, mediaType: mediaType as EstimateFoodRequest['mediaType'] };
 }
 
-/** Asks Claude for the food and macros in the photo, kept within the food log's valid ranges. */
-export async function estimateFood(client: Anthropic, request: EstimateFoodRequest): Promise<FoodEstimate> {
-  const response = await client.beta.messages.parse({
-    model: MODEL,
-    max_tokens: 16000,
-    // If a safety classifier declines, retry on Anthropic's recommended fallback model.
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
-    output_config: { effort: 'medium', format: betaZodOutputFormat(EstimateSchema) },
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: request.mediaType, data: request.image } },
-          { type: 'text', text: 'Estimate the food and macros in this photo.' },
-        ],
-      },
-    ],
-  });
+/** Asks Gemini for the food and macros in the photo, kept within the food log's valid ranges. */
+export async function estimateFood(client: GoogleGenAI, request: EstimateFoodRequest): Promise<FoodEstimate> {
+  const interaction = await client.interactions.create(
+    {
+      model: MODEL,
+      // Don't keep the player's photos on Google's side for later retrieval.
+      store: false,
+      // Reading a plate doesn't need long reasoning, and more thinking makes the player wait.
+      generation_config: { thinking_level: 'low' },
+      system_instruction: SYSTEM_PROMPT,
+      input: [
+        { type: 'text', text: 'Estimate the food and macros in this photo.' },
+        { type: 'image', data: request.image, mime_type: request.mediaType },
+      ],
+      response_format: { type: 'text', mime_type: 'application/json', schema: z.toJSONSchema(EstimateSchema) },
+    },
+    // The SDK otherwise retries by itself, and each retry uses up one of the free tier's few daily requests.
+    { maxRetries: 0 },
+  );
 
-  if (response.stop_reason === 'refusal') {
+  // Anything but a finished answer (blocked by a safety filter, cut short, failed) has no usable text.
+  if (interaction.status !== 'completed' || !interaction.output_text) {
     throw new EstimateError("Couldn't analyze this photo. Try another one or enter the food manually.", 422);
   }
-  const parsed = response.parsed_output;
-  if (response.stop_reason === 'max_tokens' || !parsed) {
+  const parsed = parseEstimate(interaction.output_text);
+  if (!parsed) {
     throw new EstimateError("Couldn't read the estimate. Please try again.", 502);
   }
   if (!parsed.isFood) {
@@ -112,7 +132,7 @@ export async function estimateFood(client: Anthropic, request: EstimateFoodReque
  * Full request → response handling for the API route, with errors mapped to status codes.
  * The client is created lazily inside the error handling, so a missing key becomes a clean 500.
  */
-export async function handleEstimateRequest(request: Request, getClient: () => Anthropic): Promise<Response> {
+export async function handleEstimateRequest(request: Request, getClient: () => GoogleGenAI): Promise<Response> {
   const reply = (body: EstimateFoodResponse, status = 200) => Response.json(body, { status });
 
   try {
@@ -126,18 +146,37 @@ export async function handleEstimateRequest(request: Request, getClient: () => A
     return reply({ ok: true, estimate });
   } catch (e) {
     if (e instanceof EstimateError) return reply({ ok: false, error: e.message }, e.status);
-    if (e instanceof Anthropic.RateLimitError) {
-      return reply({ ok: false, error: 'Too many requests right now. Please try again in a minute.' }, 429);
+    const status = httpStatus(e);
+    // The SDK's message often leaves out Google's explanation; the response body has it.
+    const body = (e as { body?: unknown }).body;
+    const reason = typeof body === 'string' && body ? body : e instanceof Error ? e.message : String(status);
+    if (status === 429) {
+      // The free tier allows only so many photos a minute and a day.
+      console.error(`estimate-food: Gemini rate limit: ${reason}`);
+      const detail = process.env.NODE_ENV === 'production' ? '' : ` (${reason})`;
+      const message = /per day/i.test(reason)
+        ? "Today's free photo estimates are used up. Add this food manually, or try a photo again tomorrow."
+        : 'Too many photo estimates right now. Please try again in a minute.';
+      return reply({ ok: false, error: `${message}${detail}` }, 429);
     }
-    if (e instanceof Anthropic.AuthenticationError) {
-      console.error('estimate-food: Anthropic API key is missing or invalid');
-      return reply({ ok: false, error: 'Photo estimates are not set up on the server.' }, 500);
+    // Google answers a wrong key with a 400, not a 401.
+    if (status === 401 || status === 403 || reason.includes('API_KEY_INVALID')) {
+      console.error('estimate-food: GEMINI_API_KEY is not a valid Gemini API key');
+      const detail = process.env.NODE_ENV === 'production' ? '' : ' (GEMINI_API_KEY is not a valid Gemini API key.)';
+      return reply({ ok: false, error: `Photo estimates are not set up on the server.${detail}` }, 500);
     }
-    if (e instanceof Anthropic.APIConnectionError || e instanceof Anthropic.APIError) {
-      console.error('estimate-food: Claude API error', e);
-      return reply({ ok: false, error: 'The estimate service is unavailable. Please try again.' }, 502);
+    if (status !== null) {
+      console.error(`estimate-food: Gemini API error ${status}: ${reason}`);
+      // In development, say why: the generic message hides setup problems like a bad model name.
+      const detail = process.env.NODE_ENV === 'production' ? '' : ` (${status}: ${reason})`;
+      return reply({ ok: false, error: `The estimate service is unavailable. Please try again.${detail}` }, 502);
+    }
+    if (/timed out|timeout/i.test(reason)) {
+      console.error(`estimate-food: Gemini request timed out: ${reason}`);
+      return reply({ ok: false, error: 'The estimate took too long. Please try again.' }, 504);
     }
     console.error('estimate-food: unexpected error', e);
-    return reply({ ok: false, error: 'Something went wrong estimating this photo.' }, 500);
+    const detail = process.env.NODE_ENV === 'production' ? '' : ` (${reason})`;
+    return reply({ ok: false, error: `Something went wrong estimating this photo.${detail}` }, 500);
   }
 }

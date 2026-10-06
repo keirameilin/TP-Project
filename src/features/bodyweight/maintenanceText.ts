@@ -43,7 +43,7 @@ export function describeMaintenance(result: MaintenanceResult): string[] {
 
   if (result.suspectDays.length > 0) {
     lines.push(
-      `${plural(result.suspectDays.length, 'unusually low day was', 'unusually low days were')} left out as possibly incomplete (${result.suspectDays.map((d) => d.date).join(', ')}). Mark them complete on the Daily Log if they're right.`,
+      `${plural(result.suspectDays.length, 'unusually low day was', 'unusually low days were')} left out as possibly incomplete (${result.suspectDays.map((d) => d.date).join(', ')}). Mark them complete on the Food tab if they're right.`,
     );
   }
   if (result.incompleteDays > 0) {
