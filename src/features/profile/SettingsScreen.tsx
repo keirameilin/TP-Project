@@ -17,18 +17,17 @@ import { toLocalDateString } from '../../lib/dates';
 import { ValidationError } from '../../lib/validation';
 import {
   BodyWeightRepository,
+  describeMaintenance,
+  getMaintenanceEstimate,
   kgToDisplayLb,
   lbToKg,
   validateBodyWeight,
   WEIGHT_RANGE_LB_MESSAGE,
+  type MaintenanceResult,
 } from '../bodyweight';
 import { ACCENT, Dropdown, Field, ON_PITCH, PITCH, Section, styles as ui, type DropdownOption } from '../dailyLog/ui';
-import {
-  FAT_ENERGY_FRACTION,
-  loadBaselineTargets,
-  PROTEIN_G_PER_KG,
-  type TargetsResult,
-} from '../targets';
+import { FoodEntryRepository, FoodLogDayRepository } from '../nutrition';
+import { explainTargets, loadBaselineTargets, type TargetsResult } from '../targets';
 import { cmToFeetInches, feetInchesToCm } from './height';
 import { PlayerProfileRepository } from './repository';
 import type { PlayerLevel, Sex } from './types';
@@ -62,7 +61,13 @@ const LEVEL_OPTIONS: DropdownOption<PlayerLevel>[] = [
 interface Repos {
   profile: PlayerProfileRepository;
   weight: BodyWeightRepository;
+  food: FoodEntryRepository;
+  logDays: FoodLogDayRepository;
 }
+
+/** The maintenance estimate from the last 28 days of logged food and weigh-ins. */
+const loadMaintenance = (r: Repos) =>
+  getMaintenanceEstimate({ bodyWeight: r.weight, food: r.food, logDays: r.logDays });
 
 /** Blank → null; accepts a comma decimal separator; garbage → NaN for the validator to reject. */
 const parseNumber = (text: string) => (text.trim() === '' ? null : Number(text.trim().replace(',', '.')));
@@ -85,16 +90,23 @@ export default function SettingsScreen() {
   const [saving, setSaving] = useState(false);
   // Targets for today from the saved profile; refreshed after each save.
   const [targets, setTargets] = useState<TargetsResult | null>(null);
+  const [maintenance, setMaintenance] = useState<MaintenanceResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     getDatabase().then(
       async (db) => {
-        const r: Repos = { profile: new PlayerProfileRepository(db), weight: new BodyWeightRepository(db) };
-        const [profile, weighIns, result] = await Promise.all([
+        const r: Repos = {
+          profile: new PlayerProfileRepository(db),
+          weight: new BodyWeightRepository(db),
+          food: new FoodEntryRepository(db),
+          logDays: new FoodLogDayRepository(db),
+        };
+        const [profile, weighIns, result, estimate] = await Promise.all([
           r.profile.get(),
           r.weight.list(), // newest first
           loadBaselineTargets(r, toLocalDateString(new Date())),
+          loadMaintenance(r),
         ]);
         if (cancelled) return;
         const latestWeightLb = weighIns[0] ? kgToDisplayLb(weighIns[0].weightKg) : null;
@@ -108,6 +120,7 @@ export default function SettingsScreen() {
         setLevel(profile?.level ?? null);
         setMaxHr(profile?.maxHeartRate != null ? String(profile.maxHeartRate) : '');
         setTargets(result);
+        setMaintenance(estimate);
         setRepos(r);
       },
       (e) => {
@@ -169,6 +182,7 @@ export default function SettingsScreen() {
         setSavedWeightLb(weightLb);
       }
       setTargets(await loadBaselineTargets(repos, today));
+      setMaintenance(await loadMaintenance(repos));
       setErrors({});
       setSaved(true);
     } catch (e) {
@@ -303,7 +317,15 @@ export default function SettingsScreen() {
               </Section>
 
               <Section title="Baseline daily targets">
-                {targets ? <TargetsView result={targets} level={level} /> : <ActivityIndicator color={ACCENT} />}
+                {targets ? <TargetsView result={targets} /> : <ActivityIndicator color={ACCENT} />}
+              </Section>
+
+              <Section title="Maintenance from your logs">
+                {maintenance ? (
+                  <MaintenanceView result={maintenance} baselineKcal={targets?.ok ? targets.targets.calories : null} />
+                ) : (
+                  <ActivityIndicator color={ACCENT} />
+                )}
               </Section>
             </>
           ) : errors.form ? (
@@ -317,7 +339,7 @@ export default function SettingsScreen() {
   );
 }
 
-function TargetsView({ result, level }: { result: TargetsResult; level: PlayerLevel | null }) {
+function TargetsView({ result }: { result: TargetsResult }) {
   if (!result.ok) {
     const missing = result.missing.map((m) => (m === 'body weight' ? 'weight' : m));
     return <Text style={ui.hint}>Add your {missing.join(', ')} above and save to see your targets.</Text>;
@@ -336,15 +358,46 @@ function TargetsView({ result, level }: { result: TargetsResult; level: PlayerLe
         <Macro label="Carbs" grams={t.carbsG} detail={perKg(t.carbsG)} />
         <Macro label="Fat" grams={t.fatG} detail={perKg(t.fatG)} />
       </View>
+      <Text style={styles.explainTitle}>How this was calculated</Text>
+      {explainTargets(t).map((line) => (
+        <Text key={line.rule} style={ui.hint}>
+          {line.text}
+        </Text>
+      ))}
       <Text style={ui.hint}>
-        Resting burn {t.bmr.toLocaleString()} kcal (Mifflin-St Jeor) × {t.activityFactor}
-        {level ? ` for ${level} training` : ''}. Protein is {PROTEIN_G_PER_KG} g per kg, fat is{' '}
-        {Math.round(FAT_ENERGY_FRACTION * 100)}% of calories and carbs are the rest. Based on a weight of{' '}
-        {kgToDisplayLb(t.weightKg)} lb.
+        Based on a weight of {kgToDisplayLb(t.weightKg)} lb. These targets aren’t adjusted for match or rest
+        days yet.
       </Text>
+    </View>
+  );
+}
+
+/** What the player's own logged food and weigh-ins say their maintenance calories are. */
+function MaintenanceView({ result, baselineKcal }: { result: MaintenanceResult; baselineKcal: number | null }) {
+  const difference = result.status === 'ok' && baselineKcal !== null ? result.maintenanceKcal - baselineKcal : null;
+  return (
+    <View style={styles.gap}>
+      {result.status === 'ok' ? (
+        <View style={styles.calorieBox}>
+          <Text style={styles.calories}>≈ {result.maintenanceKcal.toLocaleString()} kcal</Text>
+          <Text style={styles.caloriesLabel}>per day, estimated from what you logged</Text>
+        </View>
+      ) : null}
+      {describeMaintenance(result).map((line) => (
+        <Text key={line} style={ui.hint}>
+          {line}
+        </Text>
+      ))}
+      {difference !== null ? (
+        <Text style={ui.hint}>
+          {Math.abs(difference) < 50
+            ? 'That matches your formula-based target above.'
+            : `That is ${Math.abs(difference).toLocaleString()} kcal ${difference > 0 ? 'higher' : 'lower'} than your formula-based target above.`}
+        </Text>
+      ) : null}
       <Text style={ui.hint}>
-        This is a starting estimate. It isn’t adjusted for match or rest days yet, and it’s less exact for
-        players under 18.
+        This compares the calories you logged with how your weight changed. It is an estimate, and it gets
+        better the more days and weigh-ins you log.
       </Text>
     </View>
   );
@@ -369,6 +422,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontWeight: '800', color: ON_PITCH, marginTop: -8 },
   loadError: { color: ON_PITCH, fontSize: 15 },
   gap: { gap: 8 },
+  explainTitle: { fontSize: 14, fontWeight: '600', color: '#3c4043', marginTop: 4 },
   dropdowns: { gap: 8, marginTop: 4 },
   savedText: { color: ACCENT, fontWeight: '600' },
   saveButton: { backgroundColor: ACCENT, borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginTop: 4 },

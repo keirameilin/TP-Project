@@ -1,22 +1,5 @@
 import type { PlayerLevel, PlayerProfile, Sex } from '../profile/types';
-
-/**
- * Multiplies resting calories (BMR) up to a full day's burn. These are the standard "moderately /
- * very / extra active" factors; the professional one is in line with measured expenditure of
- * full-time players (roughly 3,500 kcal a day).
- */
-export const ACTIVITY_FACTORS: Record<PlayerLevel, number> = {
-  recreational: 1.55,
-  competitive: 1.725,
-  professional: 1.9,
-};
-
-/** Within the 1.6–2.2 g/kg usually recommended for players. */
-export const PROTEIN_G_PER_KG = 1.8;
-/** Share of daily calories from fat; carbs take whatever protein and fat leave. */
-export const FAT_ENERGY_FRACTION = 0.25;
-
-const KCAL_PER_G = { protein: 4, carbs: 4, fat: 9 } as const;
+import { TARGET_RULES } from './rules';
 
 export interface BaselineInput {
   sex: Sex;
@@ -30,9 +13,12 @@ export interface BaselineInput {
 export interface BaselineTargets {
   /** Resting calories from Mifflin-St Jeor. */
   bmr: number;
+  level: PlayerLevel;
   activityFactor: number;
   calories: number;
   proteinG: number;
+  /** The protein rule that applied: lower for players under the junior age limit. */
+  proteinGPerKg: number;
   carbsG: number;
   fatG: number;
   /** The body weight the targets were computed with. */
@@ -41,24 +27,45 @@ export interface BaselineTargets {
 
 /** Mifflin-St Jeor resting energy expenditure, in kcal per day. */
 export function bmrMifflinStJeor(p: Pick<BaselineInput, 'sex' | 'age' | 'heightCm' | 'weightKg'>): number {
-  return 10 * p.weightKg + 6.25 * p.heightCm - 5 * p.age + (p.sex === 'male' ? 5 : -161);
+  const f = TARGET_RULES.restingCalories.value;
+  return f.perKg * p.weightKg + f.perCm * p.heightCm + f.perYear * p.age + f[p.sex];
+}
+
+/** Protein per kg of body weight for a player's age: the junior rule below the junior age limit. */
+export function proteinGPerKgFor(age: number): number {
+  return age < TARGET_RULES.juniorAgeLimit.value
+    ? TARGET_RULES.juniorProteinGPerKg.value
+    : TARGET_RULES.proteinGPerKg.value;
 }
 
 /**
  * Maintenance calories (BMR × activity factor for the playing level) split into macros:
  * protein by body weight, fat as a share of calories, carbs as the remainder.
+ * Every constant comes from TARGET_RULES, which records where each one is from.
  */
 export function baselineTargets(input: BaselineInput): BaselineTargets {
+  const kcalPerGram = TARGET_RULES.kcalPerGram.value;
   const bmr = bmrMifflinStJeor(input);
-  const activityFactor = ACTIVITY_FACTORS[input.level];
+  const activityFactor = TARGET_RULES.activityFactor.value[input.level];
   const calories = Math.round((bmr * activityFactor) / 10) * 10;
 
-  const proteinG = Math.round(PROTEIN_G_PER_KG * input.weightKg);
-  const fatG = Math.round((calories * FAT_ENERGY_FRACTION) / KCAL_PER_G.fat);
-  const carbsKcal = calories - proteinG * KCAL_PER_G.protein - fatG * KCAL_PER_G.fat;
-  const carbsG = Math.max(0, Math.round(carbsKcal / KCAL_PER_G.carbs));
+  const proteinGPerKg = proteinGPerKgFor(input.age);
+  const proteinG = Math.round(proteinGPerKg * input.weightKg);
+  const fatG = Math.round((calories * TARGET_RULES.fatEnergyFraction.value) / kcalPerGram.fat);
+  const carbsKcal = calories - proteinG * kcalPerGram.protein - fatG * kcalPerGram.fat;
+  const carbsG = Math.max(0, Math.round(carbsKcal / kcalPerGram.carbs));
 
-  return { bmr: Math.round(bmr), activityFactor, calories, proteinG, carbsG, fatG, weightKg: input.weightKg };
+  return {
+    bmr: Math.round(bmr),
+    level: input.level,
+    activityFactor,
+    calories,
+    proteinG,
+    proteinGPerKg,
+    carbsG,
+    fatG,
+    weightKg: input.weightKg,
+  };
 }
 
 export const TARGET_REQUIREMENTS = ['age', 'sex', 'height', 'playing level', 'body weight'] as const;

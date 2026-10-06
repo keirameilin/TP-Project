@@ -15,8 +15,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDatabase } from '../../db/database';
 import { addDays, toLocalDateString } from '../../lib/dates';
 import { ValidationError } from '../../lib/validation';
+import { describePlan, type PlannedSession } from '../planning';
 import { loadBaselineTargets, type TargetsResult } from '../targets';
-import { RPE_MAX, RPE_MIN, type SessionType } from '../training';
+import { RPE_MAX, RPE_MIN, SESSION_OPTIONS } from '../training';
 import { FoodSection } from './FoodSection';
 import {
   EMPTY_FORM,
@@ -29,14 +30,6 @@ import {
 } from './form';
 import { createDailyLogRepos, loadDay, saveDay, type DailyLogRepos } from './saveDay';
 import { ACCENT, Chip, Field, FieldError, ON_PITCH, ON_PITCH_MUTED, PITCH, Section, styles as ui } from './ui';
-
-const SESSION_OPTIONS: { type: SessionType; label: string; hint: string }[] = [
-  { type: 'match', label: 'Match', hint: 'Competitive game' },
-  { type: 'hiit_conditioning', label: 'Conditioning', hint: 'Sprints, fitness drills, high-intensity running' },
-  { type: 'technical_tactical', label: 'Technical', hint: 'Passing, shooting, decision-making' },
-  { type: 'gym_strength', label: 'Gym', hint: 'Gym conditioning' },
-  { type: 'rest_day', label: 'Rest', hint: 'No training today' },
-];
 
 const RPE_VALUES = Array.from({ length: RPE_MAX - RPE_MIN + 1 }, (_, i) => RPE_MIN + i);
 
@@ -56,6 +49,8 @@ export default function DailyLogScreen() {
   // State updates land on the next render, so a fast double tap could slip past `saving`.
   const savingRef = useRef(false);
   const [targets, setTargets] = useState<TargetsResult | null>(null);
+  // What was planned for the day shown, if anything; the plan itself is edited on the plan screen.
+  const [plan, setPlan] = useState<PlannedSession | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,6 +99,14 @@ export default function DailyLogScreen() {
           if (!cancelled) setTargets(null);
         },
       );
+      repos.planned.getByDate(date).then(
+        (planned) => {
+          if (!cancelled) setPlan(planned);
+        },
+        () => {
+          if (!cancelled) setPlan(null);
+        },
+      );
       return () => {
         cancelled = true;
       };
@@ -113,6 +116,18 @@ export default function DailyLogScreen() {
   function goToDate(next: string) {
     setDate(next);
     setErrors({});
+    setStatus(null);
+  }
+
+  /** Copies the day's plan into the training form; the player still adds effort and saves. */
+  function logAsPlanned() {
+    if (!plan) return;
+    setForm((f) => ({
+      ...f,
+      sessionType: plan.sessionType,
+      duration: plan.expectedDurationMinutes === null ? f.duration : String(plan.expectedDurationMinutes),
+    }));
+    setErrors((e) => ({ ...e, sessionType: undefined, duration: undefined, form: undefined }));
     setStatus(null);
   }
 
@@ -180,11 +195,18 @@ export default function DailyLogScreen() {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.titleRow}>
             <Text style={styles.title}>⚽ Daily Log</Text>
-            <Link href="/settings" asChild>
-              <Pressable accessibilityRole="button" accessibilityLabel="Player settings" hitSlop={8} style={styles.settingsButton}>
-                <Text style={styles.settingsText}>⚙️ Player</Text>
-              </Pressable>
-            </Link>
+            <View style={styles.headerButtons}>
+              <Link href="/plan" asChild>
+                <Pressable accessibilityRole="button" accessibilityLabel="Upcoming training plan" hitSlop={6} style={styles.settingsButton}>
+                  <Text style={styles.settingsText}>📅 Plan</Text>
+                </Pressable>
+              </Link>
+              <Link href="/settings" asChild>
+                <Pressable accessibilityRole="button" accessibilityLabel="Player settings" hitSlop={6} style={styles.settingsButton}>
+                  <Text style={styles.settingsText}>⚙️ Player</Text>
+                </Pressable>
+              </Link>
+            </View>
           </View>
           <View style={styles.dateNav}>
             <Pressable
@@ -221,6 +243,24 @@ export default function DailyLogScreen() {
           {dayLoaded ? (
             <>
               <Section title="Training">
+                {plan ? (
+                  <View style={styles.planBox}>
+                    <View style={styles.planBoxText}>
+                      <Text style={styles.planLabel}>Planned</Text>
+                      <Text style={styles.planValue}>{describePlan(plan)}</Text>
+                      {plan.notes ? <Text style={ui.hint}>{plan.notes}</Text> : null}
+                    </View>
+                    {form.sessionType !== plan.sessionType ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={logAsPlanned}
+                        style={({ pressed }) => [styles.planButton, pressed && styles.arrowPressed]}
+                      >
+                        <Text style={styles.planButtonText}>Log as planned</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
                 <View style={ui.chips}>
                   {SESSION_OPTIONS.map((o) => (
                     <Chip
@@ -328,9 +368,24 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: PITCH },
   centered: { alignItems: 'center', justifyContent: 'center', padding: 24 },
   content: { padding: 16, paddingBottom: 48, gap: 16 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
   title: { fontSize: 28, fontWeight: '800', color: ON_PITCH },
+  headerButtons: { flexDirection: 'row', gap: 8 },
   settingsButton: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, backgroundColor: 'rgba(255, 255, 255, 0.18)' },
+  planBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#eef7f1',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 4,
+  },
+  planBoxText: { flex: 1, gap: 2 },
+  planLabel: { fontSize: 12, color: '#3c4043' },
+  planValue: { fontSize: 16, fontWeight: '700', color: ACCENT },
+  planButton: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1.5, borderColor: ACCENT },
+  planButtonText: { color: ACCENT, fontSize: 14, fontWeight: '600' },
   settingsText: { color: ON_PITCH, fontSize: 14, fontWeight: '600' },
   loadErrorText: { color: ON_PITCH, fontSize: 15, textAlign: 'center' },
   dateNav: { flexDirection: 'row', alignItems: 'center', marginTop: -8 },

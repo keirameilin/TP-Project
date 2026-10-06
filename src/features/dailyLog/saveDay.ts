@@ -1,6 +1,13 @@
 import type { SqlDatabase } from '../../db/types';
 import { BodyWeightRepository, type BodyWeightEntry } from '../bodyweight';
-import { FoodEntryRepository, type DailyTotals, type FoodEntry } from '../nutrition';
+import {
+  FoodEntryRepository,
+  FoodLogDayRepository,
+  type DailyTotals,
+  type FoodEntry,
+  type LogDayStatus,
+} from '../nutrition';
+import { PlannedSessionRepository } from '../planning';
 import { PlayerProfileRepository } from '../profile';
 import { TrainingSessionRepository, type TrainingSession } from '../training';
 import type { DailyLogValues, TrainingValues } from './form';
@@ -10,6 +17,8 @@ export interface DailyLogRepos {
   food: FoodEntryRepository;
   weight: BodyWeightRepository;
   profile: PlayerProfileRepository;
+  planned: PlannedSessionRepository;
+  logDays: FoodLogDayRepository;
 }
 
 export interface DayRecords {
@@ -20,6 +29,8 @@ export interface DayRecords {
 export interface DayFood {
   entries: FoodEntry[];
   totals: DailyTotals;
+  /** Whether the player marked the day's food log complete or incomplete; null if unmarked. */
+  logStatus: LogDayStatus | null;
 }
 
 export function createDailyLogRepos(db: SqlDatabase, options: { now?: () => Date } = {}): DailyLogRepos {
@@ -28,6 +39,8 @@ export function createDailyLogRepos(db: SqlDatabase, options: { now?: () => Date
     food: new FoodEntryRepository(db, options),
     weight: new BodyWeightRepository(db, options),
     profile: new PlayerProfileRepository(db, options),
+    planned: new PlannedSessionRepository(db, options),
+    logDays: new FoodLogDayRepository(db, options),
   };
 }
 
@@ -41,11 +54,12 @@ export async function loadDay(repos: DailyLogRepos, date: string): Promise<DayRe
 
 /** The day's food entries (in meal order) plus their running totals. */
 export async function loadDayFood(repos: DailyLogRepos, date: string): Promise<DayFood> {
-  const [entries, totals] = await Promise.all([
+  const [entries, totals, logDay] = await Promise.all([
     repos.food.listByDate(date),
     repos.food.getDailyTotals(date),
+    repos.logDays.get(date),
   ]);
-  return { entries, totals };
+  return { entries, totals, logStatus: logDay?.status ?? null };
 }
 
 /**

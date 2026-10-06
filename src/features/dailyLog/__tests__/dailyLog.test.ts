@@ -177,4 +177,21 @@ describe('saving', () => {
       form({ sessionType: 'gym_strength', duration: '45', rpe: 6, weight: '161' }),
     );
   });
+
+  it('loads the food-log completeness mark with the day\'s food', async () => {
+    expect((await loadDayFood(repos, DATE)).logStatus).toBeNull();
+    await repos.logDays.setStatus(DATE, 'incomplete');
+    expect((await loadDayFood(repos, DATE)).logStatus).toBe('incomplete');
+    await repos.logDays.setStatus(DATE, 'complete');
+    expect((await loadDayFood(repos, DATE)).logStatus).toBe('complete');
+    await repos.logDays.setStatus(DATE, null);
+    expect((await loadDayFood(repos, DATE)).logStatus).toBeNull();
+  });
+
+  it('offers the planned session for a day alongside what was logged', async () => {
+    await repos.planned.create({ date: DATE, sessionType: 'match', expectedDurationMinutes: 90 });
+    await save(form({ sessionType: 'rest_day' }));
+    expect((await repos.planned.getByDate(DATE))?.sessionType).toBe('match');
+    expect((await loadDay(repos, DATE)).training?.sessionType).toBe('rest_day');
+  });
 });

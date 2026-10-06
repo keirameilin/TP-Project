@@ -4,6 +4,7 @@ import { PlayerProfileRepository, type PlayerProfile } from '../../profile';
 import {
   baselineTargets,
   bmrMifflinStJeor,
+  proteinGPerKgFor,
   resolveBaselineTargets,
   type BaselineInput,
 } from '../baseline';
@@ -26,9 +27,11 @@ describe('baselineTargets', () => {
     // 1755 × 1.55 = 2720; protein 1.8 × 75; fat 25% of 2720 ÷ 9; carbs = the rest ÷ 4
     expect(baselineTargets(male)).toEqual({
       bmr: 1755,
+      level: 'recreational',
       activityFactor: 1.55,
       calories: 2720,
       proteinG: 135,
+      proteinGPerKg: 1.8,
       fatG: 76,
       carbsG: 374,
       weightKg: 75,
@@ -41,6 +44,18 @@ describe('baselineTargets', () => {
       fatG: 72,
       carbsG: 375,
     });
+  });
+
+  it('uses 1.6 g/kg of protein for players under 18 and 1.8 from 18 up', () => {
+    const at = (age: number) => baselineTargets({ ...male, age });
+    expect(at(17)).toMatchObject({ proteinGPerKg: 1.6, proteinG: 120 }); // 1.6 × 75
+    expect(at(12)).toMatchObject({ proteinGPerKg: 1.6, proteinG: 120 });
+    expect(at(18)).toMatchObject({ proteinGPerKg: 1.8, proteinG: 135 }); // 1.8 × 75
+    // The calories protein gives up go to carbs, so the macros still add up to the calorie target.
+    const junior = at(17);
+    expect(Math.abs(junior.proteinG * 4 + junior.carbsG * 4 + junior.fatG * 9 - junior.calories)).toBeLessThanOrEqual(10);
+    expect(proteinGPerKgFor(17)).toBe(1.6);
+    expect(proteinGPerKgFor(18)).toBe(1.8);
   });
 
   it('gives higher levels more calories and carbs but the same protein', () => {

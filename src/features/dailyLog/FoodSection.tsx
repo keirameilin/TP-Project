@@ -4,7 +4,7 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'rea
 
 import { ValidationError } from '../../lib/validation';
 import { pickFoodPhoto, requestFoodEstimate, type PhotoSource } from '../foodPhoto/photo';
-import { MEAL_TYPES, type FoodEntry, type Macros, type MealType } from '../nutrition';
+import { MEAL_TYPES, type FoodEntry, type LogDayStatus, type Macros, type MealType } from '../nutrition';
 import type { BaselineTargets, TargetsResult } from '../targets';
 import {
   defaultMealType,
@@ -18,7 +18,7 @@ import {
   type FoodItemForm,
 } from './form';
 import { loadDayFood, type DailyLogRepos, type DayFood } from './saveDay';
-import { ACCENT, Dropdown, Field, FieldError, Section, styles as ui } from './ui';
+import { ACCENT, Chip, Dropdown, Field, FieldError, Section, styles as ui } from './ui';
 
 const MEAL_LABELS: Record<MealType, string> = {
   breakfast: 'Breakfast',
@@ -138,6 +138,17 @@ export function FoodSection(props: { repos: DailyLogRepos; date: string; targets
     setFormOpen(false);
   }
 
+  /** Marks the day's food log complete or incomplete; tapping the current mark clears it. */
+  async function markLog(status: LogDayStatus) {
+    if (!food) return;
+    try {
+      await repos.logDays.setStatus(date, food.logStatus === status ? null : status);
+      await refresh();
+    } catch (e) {
+      setErrors({ form: `Couldn't update the day: ${errorMessage(e)}` });
+    }
+  }
+
   /** Photo → Claude estimate → fills the add form for the user to check before adding. */
   async function handleScan(source: PhotoSource) {
     if (scanning || busy) return;
@@ -212,6 +223,25 @@ export function FoodSection(props: { repos: DailyLogRepos; date: string; targets
               </>
             )}
           </View>
+
+          <View style={styles.logStatus}>
+            <Text style={styles.logStatusLabel}>Is everything you ate logged?</Text>
+            <View style={styles.logStatusButtons}>
+              <Chip
+                label="Complete"
+                selected={food.logStatus === 'complete'}
+                onPress={() => markLog('complete')}
+              />
+              <Chip
+                label="Incomplete"
+                selected={food.logStatus === 'incomplete'}
+                onPress={() => markLog('incomplete')}
+              />
+            </View>
+          </View>
+          {food.logStatus === 'incomplete' ? (
+            <Text style={ui.hint}>This day is left out of your maintenance estimate.</Text>
+          ) : null}
 
           {food.entries.length === 0 ? (
             <Text style={ui.hint}>No food logged for this day yet.</Text>
@@ -439,6 +469,9 @@ const styles = StyleSheet.create({
   totalsLabel: { fontSize: 13, color: '#3c4043' },
   totalsKcal: { fontSize: 24, fontWeight: '700', color: ACCENT },
   totalsMacros: { fontSize: 14, color: '#3c4043' },
+  logStatus: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
+  logStatusLabel: { fontSize: 14, color: '#3c4043' },
+  logStatusButtons: { flexDirection: 'row', gap: 8 },
   totalsTarget: { fontSize: 15, fontWeight: '500', color: '#3c4043' },
   progressTrack: { height: 8, borderRadius: 4, backgroundColor: '#cfe6d7', overflow: 'hidden', marginVertical: 4 },
   progressBar: { height: '100%', borderRadius: 4, backgroundColor: ACCENT },
