@@ -36,7 +36,8 @@
           "cameraPermission": "Allow $(PRODUCT_NAME) to use your camera to photograph food and estimate its macros.",
           "photosPermission": "Allow $(PRODUCT_NAME) to open your photos so you can pick a food picture to estimate its macros."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "router": {},

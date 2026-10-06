@@ -1,4 +1,5 @@
-import { Link } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -18,7 +19,27 @@ import {
   type FoodItemForm,
 } from './form';
 import { loadDayFood, type DailyLogRepos, type DayFood } from './saveDay';
-import { ACCENT, Chip, Dropdown, Field, FieldError, Section, styles as ui } from './ui';
+import {
+  ACCENT,
+  ACCENT_TINT,
+  BORDER,
+  Button,
+  Chip,
+  Dropdown,
+  FAINT,
+  Field,
+  FieldError,
+  INK,
+  INK_SOFT,
+  MACRO_COLORS,
+  MUTED,
+  ON_PITCH,
+  ProgressBar,
+  Section,
+  SURFACE_ALT,
+  styles as ui,
+  type IconName,
+} from './ui';
 
 const MEAL_LABELS: Record<MealType, string> = {
   breakfast: 'Breakfast',
@@ -27,7 +48,11 @@ const MEAL_LABELS: Record<MealType, string> = {
   snack: 'Snack',
 };
 
-const kcal = (n: number) => `${Math.round(n).toLocaleString()} kcal`;
+/** Shown when the day's calories pass the target. */
+const OVER_TARGET = '#d97706';
+
+const whole = (n: number) => Math.round(n).toLocaleString();
+const kcal = (n: number) => `${whole(n)} kcal`;
 const grams = (n: number) => `${Math.round(n)}g`;
 const macroLine = (m: { proteinG: number; carbsG: number; fatG: number }) =>
   `P ${grams(m.proteinG)} · C ${grams(m.carbsG)} · F ${grams(m.fatG)}`;
@@ -39,8 +64,9 @@ interface Editing {
 }
 
 /**
- * Food logged item by item. Each item is written as soon as it's added or updated (not on
- * "Save Day"), and the day's totals are summed by the data layer. Tapping an item edits it in place.
+ * The day's food as three cards: intake against targets, the items by meal, and adding food.
+ * Each item is written as soon as it's added or updated, and the totals are summed by the data
+ * layer. Tapping an item edits it in place.
  */
 export function FoodSection(props: { repos: DailyLogRepos; date: string; targets: TargetsResult | null }) {
   const { repos, date, targets } = props;
@@ -200,116 +226,116 @@ export function FoodSection(props: { repos: DailyLogRepos; date: string; targets
     ]);
   }
 
+  if (loadError) return <Text style={ui.onPitchText}>{loadError}</Text>;
+  if (!food) return <ActivityIndicator color={ON_PITCH} style={styles.loading} />;
+
   return (
-    <Section title="Food" subtitle="Items save as you add them">
-      {loadError ? <Text style={ui.errorText}>{loadError}</Text> : null}
-      {food ? (
-        <>
-          <View style={styles.totals}>
-            {targets?.ok ? (
-              <EatenVsTarget eaten={food.totals.totals} target={targets.targets} />
-            ) : (
-              <>
-                <Text style={styles.totalsLabel}>Total eaten</Text>
-                <Text style={styles.totalsKcal}>{kcal(food.totals.totals.calories)}</Text>
-                <Text style={styles.totalsMacros}>{macroLine(food.totals.totals)}</Text>
-                {targets ? (
-                  <Link href="/settings" asChild>
-                    <Pressable accessibilityRole="link" hitSlop={6}>
-                      <Text style={styles.targetsLink}>Set up ⚙️ Player to see your daily targets ›</Text>
-                    </Pressable>
-                  </Link>
-                ) : null}
-              </>
-            )}
-          </View>
+    <>
+      <Section title="Intake" icon="flame">
+        <Intake eaten={food.totals.totals} target={targets?.ok ? targets.targets : null} />
+        {targets && !targets.ok ? (
+          <Button
+            label="Set up your daily targets"
+            variant="secondary"
+            icon="person"
+            onPress={() => router.push('/player')}
+          />
+        ) : null}
 
-          <View style={styles.logStatus}>
-            <Text style={styles.logStatusLabel}>Is everything you ate logged?</Text>
-            <View style={styles.logStatusButtons}>
-              <Chip
-                label="Complete"
-                selected={food.logStatus === 'complete'}
-                onPress={() => markLog('complete')}
-              />
-              <Chip
-                label="Incomplete"
-                selected={food.logStatus === 'incomplete'}
-                onPress={() => markLog('incomplete')}
-              />
-            </View>
+        <View style={styles.logStatus}>
+          <Text style={styles.logStatusLabel}>Is everything you ate logged?</Text>
+          <View style={styles.logStatusButtons}>
+            <Chip label="Complete" selected={food.logStatus === 'complete'} onPress={() => markLog('complete')} />
+            <Chip
+              label="Incomplete"
+              selected={food.logStatus === 'incomplete'}
+              onPress={() => markLog('incomplete')}
+            />
           </View>
-          {food.logStatus === 'incomplete' ? (
-            <Text style={ui.hint}>This day is left out of your maintenance estimate.</Text>
-          ) : null}
+        </View>
+        {food.logStatus === 'incomplete' ? (
+          <Text style={ui.hint}>This day is left out of your maintenance estimate.</Text>
+        ) : null}
+      </Section>
 
-          {food.entries.length === 0 ? (
-            <Text style={ui.hint}>No food logged for this day yet.</Text>
-          ) : (
-            <>
-              <Text style={ui.hint}>Tap an item to edit it.</Text>
-              {MEAL_TYPES.map((meal) => {
-                const entries = food.entries.filter((e) => e.mealType === meal);
-                if (entries.length === 0) return null;
-                return (
-                  <View key={meal} style={styles.meal}>
-                    <View style={styles.mealHeader}>
-                      <Text style={styles.mealTitle}>{MEAL_LABELS[meal]}</Text>
-                      <Text style={styles.mealKcal}>{kcal(food.totals.byMeal[meal].calories)}</Text>
+      <Section
+        title="Meals"
+        icon="restaurant"
+        subtitle={food.entries.length > 0 ? 'Tap an item to edit' : undefined}
+      >
+        {food.entries.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons name="restaurant-outline" size={28} color={FAINT} />
+            <Text style={styles.emptyText}>Nothing logged for this day yet</Text>
+          </View>
+        ) : (
+          MEAL_TYPES.map((meal) => {
+            const entries = food.entries.filter((e) => e.mealType === meal);
+            if (entries.length === 0) return null;
+            return (
+              <View key={meal} style={styles.meal}>
+                <View style={styles.mealHeader}>
+                  <Text style={styles.mealTitle}>{MEAL_LABELS[meal]}</Text>
+                  <Text style={styles.mealKcal}>{kcal(food.totals.byMeal[meal].calories)}</Text>
+                </View>
+                {entries.map((entry) =>
+                  editing?.id === entry.id ? (
+                    <View key={entry.id} style={styles.editCard}>
+                      <FoodItemEditor
+                        item={editing.item}
+                        errors={editing.errors}
+                        onChange={updateEditing}
+                        onSubmit={handleUpdate}
+                        submitLabel="Update"
+                        busy={busy}
+                        onCancel={() => setEditing(null)}
+                      />
                     </View>
-                    {entries.map((entry) =>
-                      editing?.id === entry.id ? (
-                        <View key={entry.id} style={styles.editCard}>
-                          <FoodItemEditor
-                            item={editing.item}
-                            errors={editing.errors}
-                            onChange={updateEditing}
-                            onSubmit={handleUpdate}
-                            submitLabel="Update"
-                            busy={busy}
-                            onCancel={() => setEditing(null)}
-                          />
-                        </View>
-                      ) : (
-                        <View key={entry.id} style={styles.entry}>
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={`Edit ${entry.foodName}`}
-                            onPress={() => startEditing(entry)}
-                            style={({ pressed }) => [styles.entryText, pressed && styles.pressed]}
-                          >
-                            <Text style={styles.entryName}>{entry.foodName}</Text>
-                            <Text style={styles.entryMacros}>
-                              {kcal(entry.calories)} · {macroLine(entry)}
-                            </Text>
-                          </Pressable>
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={`Remove ${entry.foodName}`}
-                            onPress={() => confirmRemove(entry)}
-                            hitSlop={8}
-                            style={styles.remove}
-                          >
-                            <Text style={styles.removeText}>✕</Text>
-                          </Pressable>
-                        </View>
-                      ),
-                    )}
-                  </View>
-                );
-              })}
-            </>
-          )}
-        </>
-      ) : loadError ? null : (
-        <ActivityIndicator />
-      )}
+                  ) : (
+                    <View key={entry.id} style={styles.entry}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Edit ${entry.foodName}`}
+                        onPress={() => startEditing(entry)}
+                        style={({ pressed }) => [styles.entryText, pressed && ui.dimmed]}
+                      >
+                        <Text style={styles.entryName}>{entry.foodName}</Text>
+                        <Text style={styles.entryMacros}>
+                          {kcal(entry.calories)} · {macroLine(entry)}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove ${entry.foodName}`}
+                        onPress={() => confirmRemove(entry)}
+                        hitSlop={8}
+                        style={({ pressed }) => [styles.remove, pressed && ui.dimmed]}
+                      >
+                        <Ionicons name="close" size={16} color={MUTED} />
+                      </Pressable>
+                    </View>
+                  ),
+                )}
+              </View>
+            );
+          })
+        )}
+      </Section>
 
-      <View style={styles.addForm}>
-        <Text style={styles.addTitle}>Add food</Text>
+      <Section title="Add food" icon="add-circle" subtitle="Saves as you add">
         <View style={styles.photoRow}>
-          <PhotoButton label="📷 Take photo" onPress={() => handleScan('camera')} disabled={scanning || busy} />
-          <PhotoButton label="🖼️ Choose photo" onPress={() => handleScan('library')} disabled={scanning || busy} />
+          <PhotoTile
+            icon="camera"
+            label="Take photo"
+            onPress={() => handleScan('camera')}
+            disabled={scanning || busy}
+          />
+          <PhotoTile
+            icon="images"
+            label="Choose photo"
+            onPress={() => handleScan('library')}
+            disabled={scanning || busy}
+          />
         </View>
         {scanning ? (
           <View style={styles.scanning}>
@@ -332,57 +358,86 @@ export function FoodSection(props: { repos: DailyLogRepos; date: string; targets
           <>
             {/* Photo errors would otherwise live inside the hidden form. */}
             <FieldError message={errors.form} />
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              label="Add manually"
+              variant="quiet"
+              icon="create-outline"
               onPress={openManualForm}
               disabled={scanning || busy}
-              hitSlop={8}
-              style={({ pressed }) => [styles.manualButton, (pressed || scanning) && styles.pressed]}
-            >
-              <Text style={styles.manualButtonText}>✏️ Add manually</Text>
-            </Pressable>
+            />
           </>
         )}
-      </View>
-    </Section>
-  );
-}
-
-/** The day's intake against the baseline targets, with a calorie progress bar. */
-function EatenVsTarget({ eaten, target }: { eaten: Macros; target: BaselineTargets }) {
-  const progress = Math.min(1, target.calories > 0 ? eaten.calories / target.calories : 0);
-  const pair = (label: string, value: number, goal: number) => `${label} ${Math.round(value)}/${goal}g`;
-  return (
-    <>
-      <Text style={styles.totalsLabel}>Eaten vs. baseline target</Text>
-      <Text style={styles.totalsKcal}>
-        {Math.round(eaten.calories).toLocaleString()}
-        <Text style={styles.totalsTarget}> / {target.calories.toLocaleString()} kcal</Text>
-      </Text>
-      <View
-        style={styles.progressTrack}
-        accessibilityRole="progressbar"
-        accessibilityValue={{ min: 0, max: target.calories, now: Math.round(eaten.calories) }}
-      >
-        <View style={[styles.progressBar, { width: `${progress * 100}%` }]} />
-      </View>
-      <Text style={styles.totalsMacros}>
-        {pair('P', eaten.proteinG, target.proteinG)} · {pair('C', eaten.carbsG, target.carbsG)} ·{' '}
-        {pair('F', eaten.fatG, target.fatG)}
-      </Text>
+      </Section>
     </>
   );
 }
 
-function PhotoButton({ label, onPress, disabled }: { label: string; onPress: () => void; disabled: boolean }) {
+/** Calories with a progress bar, then protein, carbs and fat side by side; bars appear once targets exist. */
+function Intake({ eaten, target }: { eaten: Macros; target: BaselineTargets | null }) {
+  const remaining = target ? target.calories - Math.round(eaten.calories) : null;
+  const over = remaining !== null && remaining < 0;
+  return (
+    <View style={styles.intake}>
+      <View style={styles.caloriesRow}>
+        <Text style={styles.caloriesValue}>{whole(eaten.calories)}</Text>
+        <Text style={styles.caloriesUnit}>{target ? `of ${target.calories.toLocaleString()} kcal` : 'kcal eaten'}</Text>
+      </View>
+      {target ? (
+        <>
+          <ProgressBar
+            progress={eaten.calories / target.calories}
+            color={over ? OVER_TARGET : ACCENT}
+            height={10}
+            label="Calories eaten against target"
+            max={target.calories}
+            now={Math.round(eaten.calories)}
+          />
+          <Text style={[styles.remaining, over && { color: OVER_TARGET }]}>
+            {over ? `${whole(-remaining)} kcal over your target` : `${whole(remaining ?? 0)} kcal left`}
+          </Text>
+        </>
+      ) : null}
+      <View style={styles.macros}>
+        <MacroStat label="Protein" color={MACRO_COLORS.protein} eaten={eaten.proteinG} target={target?.proteinG} />
+        <MacroStat label="Carbs" color={MACRO_COLORS.carbs} eaten={eaten.carbsG} target={target?.carbsG} />
+        <MacroStat label="Fat" color={MACRO_COLORS.fat} eaten={eaten.fatG} target={target?.fatG} />
+      </View>
+    </View>
+  );
+}
+
+function MacroStat(props: { label: string; color: string; eaten: number; target?: number }) {
+  const { eaten, target } = props;
+  return (
+    <View
+      style={styles.macro}
+      accessible
+      accessibilityLabel={`${props.label}: ${Math.round(eaten)} grams${target ? ` of ${target}` : ''}`}
+    >
+      <View style={styles.macroLabelRow}>
+        <View style={[styles.macroDot, { backgroundColor: props.color }]} />
+        <Text style={styles.macroLabel}>{props.label}</Text>
+      </View>
+      <Text style={styles.macroValue}>
+        {Math.round(eaten)}
+        <Text style={styles.macroTarget}>{target ? ` / ${target} g` : ' g'}</Text>
+      </Text>
+      {target ? <ProgressBar progress={eaten / target} color={props.color} height={6} /> : null}
+    </View>
+  );
+}
+
+function PhotoTile(props: { icon: IconName; label: string; onPress: () => void; disabled: boolean }) {
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed }) => [styles.photoButton, (pressed || disabled) && styles.pressed]}
+      accessibilityLabel={props.label}
+      onPress={props.onPress}
+      disabled={props.disabled}
+      style={({ pressed }) => [styles.photoTile, (pressed || props.disabled) && ui.dimmed]}
     >
-      <Text style={styles.photoButtonText}>{label}</Text>
+      <Ionicons name={props.icon} size={26} color={ACCENT} />
+      <Text style={styles.photoTileText}>{props.label}</Text>
     </Pressable>
   );
 }
@@ -435,28 +490,8 @@ function FoodItemEditor(props: {
       </View>
       <FieldError message={errors.form} />
       <View style={styles.buttons}>
-        {props.onCancel ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={props.onCancel}
-            disabled={props.busy}
-            style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.cancelText}>Cancel</Text>
-          </Pressable>
-        ) : null}
-        <Pressable
-          accessibilityRole="button"
-          onPress={props.onSubmit}
-          disabled={props.busy}
-          style={({ pressed }) => [styles.submitButton, (pressed || props.busy) && styles.pressed]}
-        >
-          {props.busy ? (
-            <ActivityIndicator color={ACCENT} />
-          ) : (
-            <Text style={styles.submitText}>{props.submitLabel}</Text>
-          )}
-        </Pressable>
+        {props.onCancel ? <Button label="Cancel" variant="quiet" onPress={props.onCancel} disabled={props.busy} /> : null}
+        <Button label={props.submitLabel} onPress={props.onSubmit} busy={props.busy} grow />
       </View>
     </View>
   );
@@ -465,54 +500,69 @@ function FoodItemEditor(props: {
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const styles = StyleSheet.create({
-  totals: { backgroundColor: '#eef7f1', borderRadius: 10, padding: 12, gap: 2 },
-  totalsLabel: { fontSize: 13, color: '#3c4043' },
-  totalsKcal: { fontSize: 24, fontWeight: '700', color: ACCENT },
-  totalsMacros: { fontSize: 14, color: '#3c4043' },
-  logStatus: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
-  logStatusLabel: { fontSize: 14, color: '#3c4043' },
+  loading: { marginTop: 24 },
+  intake: { gap: 8 },
+  caloriesRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  caloriesValue: { fontSize: 40, fontWeight: '800', letterSpacing: -1, color: INK },
+  caloriesUnit: { fontSize: 15, fontWeight: '600', color: MUTED },
+  remaining: { fontSize: 14, fontWeight: '600', color: ACCENT },
+  macros: { flexDirection: 'row', gap: 10, marginTop: 6 },
+  macro: { flex: 1, gap: 6, backgroundColor: SURFACE_ALT, borderRadius: 14, padding: 12 },
+  macroLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  macroDot: { width: 8, height: 8, borderRadius: 4 },
+  macroLabel: { fontSize: 13, fontWeight: '600', color: INK_SOFT },
+  macroValue: { fontSize: 18, fontWeight: '800', color: INK },
+  macroTarget: { fontSize: 12, fontWeight: '500', color: MUTED },
+  logStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+  },
+  logStatusLabel: { fontSize: 14, fontWeight: '500', color: INK_SOFT },
   logStatusButtons: { flexDirection: 'row', gap: 8 },
-  totalsTarget: { fontSize: 15, fontWeight: '500', color: '#3c4043' },
-  progressTrack: { height: 8, borderRadius: 4, backgroundColor: '#cfe6d7', overflow: 'hidden', marginVertical: 4 },
-  progressBar: { height: '100%', borderRadius: 4, backgroundColor: ACCENT },
-  targetsLink: { fontSize: 13, color: ACCENT, fontWeight: '600', marginTop: 4 },
-  meal: { gap: 4, marginTop: 4 },
-  mealHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-  mealTitle: { fontSize: 15, fontWeight: '600', color: '#202124' },
-  mealKcal: { fontSize: 13, color: '#5f6368' },
+  empty: { alignItems: 'center', gap: 8, paddingVertical: 20 },
+  emptyText: { fontSize: 14, color: MUTED },
+  meal: { gap: 2, marginTop: 4 },
+  mealHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 2 },
+  mealTitle: { fontSize: 13, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: MUTED },
+  mealKcal: { fontSize: 13, fontWeight: '600', color: MUTED },
   entry: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#dadce0',
+    gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: BORDER,
   },
-  entryText: { flex: 1, gap: 2, paddingVertical: 8 },
-  entryName: { fontSize: 15, color: '#111' },
-  entryMacros: { fontSize: 13, color: '#5f6368' },
-  remove: { paddingHorizontal: 8, paddingVertical: 4 },
-  removeText: { fontSize: 16, color: '#9aa0a6' },
-  editCard: { borderWidth: 1.5, borderColor: ACCENT, borderRadius: 10, padding: 12, marginVertical: 4 },
-  editor: { gap: 8 },
-  addForm: { gap: 8, marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#eceef0' },
-  addTitle: { fontSize: 15, fontWeight: '600', color: '#202124' },
-  photoRow: { flexDirection: 'row', gap: 8 },
-  photoButton: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center', backgroundColor: '#eef7f1' },
-  photoButtonText: { color: ACCENT, fontSize: 15, fontWeight: '600' },
-  scanning: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  manualButton: { alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 12 },
-  manualButtonText: { color: ACCENT, fontSize: 15, fontWeight: '600', textDecorationLine: 'underline' },
-  scanNote: { fontSize: 13, color: '#3c4043', backgroundColor: '#fff8e1', borderRadius: 8, padding: 10 },
-  buttons: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  submitButton: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderColor: ACCENT,
-    borderRadius: 10,
-    paddingVertical: 12,
+  entryText: { flex: 1, gap: 2, paddingVertical: 10 },
+  entryName: { fontSize: 16, fontWeight: '600', color: INK },
+  entryMacros: { fontSize: 13, color: MUTED },
+  remove: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: SURFACE_ALT,
   },
-  submitText: { color: ACCENT, fontSize: 16, fontWeight: '600' },
-  cancelButton: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center', backgroundColor: '#eceef0' },
-  cancelText: { color: '#3c4043', fontSize: 16, fontWeight: '600' },
-  pressed: { opacity: 0.6 },
+  editCard: { borderWidth: 1.5, borderColor: ACCENT, borderRadius: 14, padding: 12, marginVertical: 6 },
+  editor: { gap: 6 },
+  photoRow: { flexDirection: 'row', gap: 10 },
+  photoTile: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 18,
+    borderRadius: 16,
+    backgroundColor: ACCENT_TINT,
+  },
+  photoTileText: { color: ACCENT, fontSize: 15, fontWeight: '700' },
+  scanning: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  scanNote: { fontSize: 13, lineHeight: 18, color: '#713f12', backgroundColor: '#fef9c3', borderRadius: 12, padding: 12 },
+  buttons: { flexDirection: 'row', gap: 8, marginTop: 8 },
 });

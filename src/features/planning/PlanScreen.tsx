@@ -1,23 +1,27 @@
-import { router } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getDatabase } from '../../db/database';
 import { addDays, toLocalDateString } from '../../lib/dates';
 import { ValidationError } from '../../lib/validation';
-import { ACCENT, Dropdown, Field, ON_PITCH, ON_PITCH_MUTED, PITCH, styles as ui } from '../dailyLog/ui';
-import { SESSION_OPTIONS } from '../training/labels';
+import {
+  ACCENT,
+  BORDER,
+  Button,
+  Dropdown,
+  FAINT,
+  Field,
+  INK,
+  MUTED,
+  ON_PITCH,
+  PitchLink,
+  Screen,
+  Stepper,
+  SURFACE_ALT,
+  styles as ui,
+} from '../dailyLog/ui';
+import { SESSION_ICONS, SESSION_OPTIONS } from '../training/labels';
 import {
   describePlan,
   EMPTY_PLAN_FORM,
@@ -28,7 +32,7 @@ import {
   type PlanFormErrors,
 } from './planForm';
 import { PlannedSessionRepository } from './repository';
-import { NONE_PLANNED, WINDOW_DAYS, type PlannedDay } from './types';
+import { WINDOW_DAYS, type PlannedDay } from './types';
 import { DuplicatePlannedDateError } from './validation';
 
 const TYPE_OPTIONS = SESSION_OPTIONS.map((o) => ({ value: o.type, label: o.label, hint: o.hint }));
@@ -172,216 +176,148 @@ export default function PlanScreen() {
   const endDate = addDays(startDate, WINDOW_DAYS - 1);
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={8} style={styles.back}>
-            <Text style={styles.backText}>‹ Daily Log</Text>
-          </Pressable>
-          <Text style={styles.title}>Upcoming training</Text>
+    <Screen title="Training plan">
+      <Stepper
+        title={startDate === today ? 'Next 7 days' : '7 days'}
+        subtitle={`${shortDate(startDate)} – ${shortDate(endDate)}`}
+        onPrevious={() => goToWeek(addDays(startDate, -WINDOW_DAYS))}
+        onNext={() => goToWeek(addDays(startDate, WINDOW_DAYS))}
+        previousLabel="Previous 7 days"
+        nextLabel="Following 7 days"
+      />
+      {startDate !== today ? <PitchLink label="Back to the next 7 days" onPress={() => goToWeek(today)} /> : null}
 
-          <View style={styles.weekNav}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Previous 7 days"
-              onPress={() => goToWeek(addDays(startDate, -WINDOW_DAYS))}
-              hitSlop={8}
-              style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}
-            >
-              <Text style={styles.arrowText}>‹</Text>
-            </Pressable>
-            <View style={styles.weekText}>
-              <Text style={styles.weekLabel}>{startDate === today ? 'Next 7 days' : '7 days'}</Text>
-              <Text style={styles.weekRange}>{`${shortDate(startDate)} – ${shortDate(endDate)}`}</Text>
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Following 7 days"
-              onPress={() => goToWeek(addDays(startDate, WINDOW_DAYS))}
-              hitSlop={8}
-              style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}
-            >
-              <Text style={styles.arrowText}>›</Text>
-            </Pressable>
+      {loadError ? (
+        <Text style={ui.onPitchText}>{loadError}</Text>
+      ) : !week ? (
+        <ActivityIndicator color={ON_PITCH} style={styles.loading} />
+      ) : (
+        <>
+          <View style={styles.matchCount}>
+            <Ionicons name="trophy" size={16} color={ON_PITCH} />
+            <Text style={styles.matchCountText}>
+              {week.matchCount === 0
+                ? 'No matches planned in these 7 days'
+                : `${week.matchCount} ${week.matchCount === 1 ? 'match' : 'matches'} planned in these 7 days`}
+            </Text>
           </View>
-          {startDate !== today ? (
-            <Pressable accessibilityRole="button" onPress={() => goToWeek(today)} style={styles.backToToday}>
-              <Text style={styles.backToTodayText}>Back to the next 7 days</Text>
-            </Pressable>
-          ) : null}
 
-          {loadError ? (
-            <Text style={styles.loadError}>{loadError}</Text>
-          ) : !week ? (
-            <ActivityIndicator color={ON_PITCH} />
-          ) : (
-            <>
-              <Text style={styles.matchCount}>
-                {week.matchCount === 0
-                  ? 'No matches planned in these 7 days'
-                  : `${week.matchCount} ${week.matchCount === 1 ? 'match' : 'matches'} planned in these 7 days`}
-              </Text>
+          {week.days.map((day) => {
+            const isPast = day.date < today;
+            const name = dayName(day.date, today);
+            const isEditing = editingDate === day.date;
+            // A past day with no plan can't get one, so there is nothing to open.
+            const canOpen = !isPast || day.session !== null;
 
-              {week.days.map((day) => {
-                const isPast = day.date < today;
-                const name = dayName(day.date, today);
-                const isEditing = editingDate === day.date;
-                // A past day with no plan can't get one, so there is nothing to open.
-                const canOpen = !isPast || day.session !== null;
-
-                return (
-                  <View key={day.date} style={[styles.day, isEditing && styles.dayEditing]}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`${name ?? ''} ${shortDate(day.date)}: ${
-                        day.session ? describePlan(day.session) : 'none planned'
-                      }`}
-                      accessibilityState={{ disabled: !canOpen, expanded: isEditing }}
-                      disabled={!canOpen || busy}
-                      onPress={() => (isEditing ? setEditingDate(null) : startEditing(day))}
-                      style={({ pressed }) => [styles.dayRow, pressed && styles.pressed]}
-                    >
-                      <View style={styles.dayDate}>
-                        {name ? <Text style={styles.dayName}>{name}</Text> : null}
-                        <Text style={name ? styles.dayDateSmall : styles.dayName}>{shortDate(day.date)}</Text>
-                      </View>
-                      <View style={styles.dayPlan}>
-                        {day.session ? (
-                          <>
-                            <Text style={styles.planText}>{describePlan(day.session)}</Text>
-                            {day.session.notes ? <Text style={styles.planNotes}>{day.session.notes}</Text> : null}
-                          </>
-                        ) : (
-                          <Text style={styles.nonePlanned}>
-                            {day.plan === NONE_PLANNED && isPast ? 'Nothing was planned' : 'None planned'}
-                          </Text>
-                        )}
-                      </View>
-                      {canOpen ? <Text style={styles.dayAction}>{day.session ? 'Edit' : 'Add'}</Text> : null}
-                    </Pressable>
-
-                    {isEditing ? (
-                      <View style={styles.editor}>
-                        <Dropdown
-                          label="Session"
-                          value={form.sessionType}
-                          options={TYPE_OPTIONS}
-                          onChange={(value) => update('sessionType', value)}
-                          error={errors.sessionType}
-                        />
-                        {form.sessionType !== 'rest_day' ? (
-                          <Field
-                            label="Expected duration in minutes (optional)"
-                            value={form.duration}
-                            onChangeText={(t) => update('duration', t)}
-                            error={errors.duration}
-                            keyboardType="number-pad"
-                            placeholder="e.g. 90"
-                            fullWidth
-                          />
-                        ) : null}
-                        <Field
-                          label="Notes (optional)"
-                          value={form.notes}
-                          onChangeText={(t) => update('notes', t)}
-                          error={errors.notes}
-                          keyboardType="default"
-                          placeholder="e.g. Away, 3pm kick-off"
-                          fullWidth
-                        />
-                        {errors.form ? <Text style={ui.errorText}>{errors.form}</Text> : null}
-                        <View style={styles.buttons}>
-                          {day.session ? (
-                            <Pressable
-                              accessibilityRole="button"
-                              onPress={() => confirmRemove(day)}
-                              disabled={busy}
-                              style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
-                            >
-                              <Text style={styles.removeText}>Remove</Text>
-                            </Pressable>
-                          ) : null}
-                          <Pressable
-                            accessibilityRole="button"
-                            onPress={() => setEditingDate(null)}
-                            disabled={busy}
-                            style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
-                          >
-                            <Text style={styles.secondaryText}>Cancel</Text>
-                          </Pressable>
-                          <Pressable
-                            accessibilityRole="button"
-                            onPress={() => handleSave(day)}
-                            disabled={busy}
-                            style={({ pressed }) => [styles.saveButton, (pressed || busy) && styles.pressed]}
-                          >
-                            {busy ? (
-                              <ActivityIndicator color="#fff" />
-                            ) : (
-                              <Text style={styles.saveText}>{day.session ? 'Update' : 'Save plan'}</Text>
-                            )}
-                          </Pressable>
-                        </View>
-                      </View>
-                    ) : null}
+            return (
+              <View key={day.date} style={[styles.day, day.date === today && styles.dayToday]}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${name ?? ''} ${shortDate(day.date)}: ${
+                    day.session ? describePlan(day.session) : 'none planned'
+                  }`}
+                  accessibilityState={{ disabled: !canOpen, expanded: isEditing }}
+                  disabled={!canOpen || busy}
+                  onPress={() => (isEditing ? setEditingDate(null) : startEditing(day))}
+                  style={({ pressed }) => [styles.dayRow, pressed && ui.dimmed]}
+                >
+                  <View style={[styles.dayIcon, day.session && styles.dayIconPlanned]}>
+                    <Ionicons
+                      name={day.session ? SESSION_ICONS[day.session.sessionType] : 'add'}
+                      size={20}
+                      color={day.session ? '#fff' : canOpen ? ACCENT : FAINT}
+                    />
                   </View>
-                );
-              })}
-            </>
-          )}
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+                  <View style={styles.dayText}>
+                    <Text style={styles.dayDate}>{name ? `${name} · ${shortDate(day.date)}` : shortDate(day.date)}</Text>
+                    {day.session ? (
+                      <>
+                        <Text style={styles.planText}>{describePlan(day.session)}</Text>
+                        {day.session.notes ? <Text style={styles.planNotes}>{day.session.notes}</Text> : null}
+                      </>
+                    ) : (
+                      <Text style={styles.nonePlanned}>{isPast ? 'Nothing was planned' : 'None planned'}</Text>
+                    )}
+                  </View>
+                  {canOpen ? (
+                    <Ionicons name={isEditing ? 'chevron-up' : 'chevron-down'} size={18} color={MUTED} />
+                  ) : null}
+                </Pressable>
+
+                {isEditing ? (
+                  <View style={styles.editor}>
+                    <Dropdown
+                      label="Session"
+                      value={form.sessionType}
+                      options={TYPE_OPTIONS}
+                      onChange={(value) => update('sessionType', value)}
+                      error={errors.sessionType}
+                    />
+                    {form.sessionType !== 'rest_day' ? (
+                      <Field
+                        label="Expected duration in minutes (optional)"
+                        value={form.duration}
+                        onChangeText={(t) => update('duration', t)}
+                        error={errors.duration}
+                        keyboardType="number-pad"
+                        placeholder="e.g. 90"
+                        fullWidth
+                      />
+                    ) : null}
+                    <Field
+                      label="Notes (optional)"
+                      value={form.notes}
+                      onChangeText={(t) => update('notes', t)}
+                      error={errors.notes}
+                      keyboardType="default"
+                      placeholder="e.g. Away, 3pm kick-off"
+                      fullWidth
+                    />
+                    {errors.form ? <Text style={ui.errorText}>{errors.form}</Text> : null}
+                    <View style={styles.buttons}>
+                      {day.session ? (
+                        <Button label="Remove" variant="danger" onPress={() => confirmRemove(day)} disabled={busy} />
+                      ) : null}
+                      <Button label="Cancel" variant="quiet" onPress={() => setEditingDate(null)} disabled={busy} />
+                      <Button
+                        label={day.session ? 'Update' : 'Save plan'}
+                        onPress={() => handleSave(day)}
+                        busy={busy}
+                        grow
+                      />
+                    </View>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
+        </>
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: PITCH },
-  content: { padding: 16, paddingBottom: 48, gap: 12 },
-  back: { alignSelf: 'flex-start' },
-  backText: { color: ON_PITCH, fontSize: 16, fontWeight: '600' },
-  title: { fontSize: 28, fontWeight: '800', color: ON_PITCH, marginTop: -4 },
-  weekNav: { flexDirection: 'row', alignItems: 'center' },
-  weekText: { flex: 1, alignItems: 'center' },
-  weekLabel: { fontSize: 18, fontWeight: '700', color: ON_PITCH },
-  weekRange: { fontSize: 14, color: ON_PITCH_MUTED },
-  arrow: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  loading: { marginTop: 24 },
+  matchCount: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  matchCountText: { color: ON_PITCH, fontSize: 15, fontWeight: '600' },
+  day: { backgroundColor: '#fff', borderRadius: 18, overflow: 'hidden' },
+  dayToday: { borderWidth: 2, borderColor: '#86efac' },
+  dayRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
+  dayIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: SURFACE_ALT,
   },
-  arrowText: { fontSize: 28, lineHeight: 30, color: ACCENT },
-  backToToday: { alignSelf: 'center' },
-  backToTodayText: { color: ON_PITCH, fontSize: 14, fontWeight: '600', textDecorationLine: 'underline' },
-  loadError: { color: ON_PITCH, fontSize: 15 },
-  matchCount: { color: ON_PITCH, fontSize: 15, fontWeight: '600', textAlign: 'center' },
-  day: { backgroundColor: '#fff', borderRadius: 12, overflow: 'hidden' },
-  dayEditing: { borderWidth: 2, borderColor: '#cfe6d7' },
-  dayRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
-  dayDate: { width: 104 },
-  dayName: { fontSize: 15, fontWeight: '700', color: '#111' },
-  dayDateSmall: { fontSize: 13, color: '#5f6368' },
-  dayPlan: { flex: 1, gap: 2 },
-  planText: { fontSize: 16, fontWeight: '600', color: ACCENT },
-  planNotes: { fontSize: 13, color: '#5f6368' },
-  nonePlanned: { fontSize: 15, color: '#9aa0a6' },
-  dayAction: { fontSize: 14, fontWeight: '600', color: ACCENT },
-  editor: { gap: 8, padding: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#eceef0' },
-  buttons: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  secondaryButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    backgroundColor: '#eceef0',
-  },
-  secondaryText: { color: '#3c4043', fontSize: 15, fontWeight: '600' },
-  removeText: { color: '#c5221f', fontSize: 15, fontWeight: '600' },
-  saveButton: { flex: 1, backgroundColor: ACCENT, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
-  saveText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  pressed: { opacity: 0.6 },
+  dayIconPlanned: { backgroundColor: ACCENT },
+  dayText: { flex: 1, gap: 2 },
+  dayDate: { fontSize: 13, fontWeight: '600', color: MUTED },
+  planText: { fontSize: 17, fontWeight: '700', color: INK },
+  planNotes: { fontSize: 13, color: MUTED },
+  nonePlanned: { fontSize: 16, color: FAINT },
+  editor: { gap: 6, padding: 14, paddingTop: 10, borderTopWidth: 1, borderTopColor: BORDER, backgroundColor: '#fff' },
+  buttons: { flexDirection: 'row', gap: 8, marginTop: 8 },
 });
