@@ -95,6 +95,19 @@ const MIGRATIONS: string[] = [
   ALTER TABLE player_profile ADD COLUMN level TEXT
     CHECK (level IS NULL OR level IN ('recreational', 'competitive', 'professional'));
   `,
+  // v8: planned (upcoming) sessions — what the player intends to do, separate from what was logged
+  `
+  CREATE TABLE planned_sessions (
+    id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+    date                      TEXT    NOT NULL UNIQUE,  -- local calendar date, YYYY-MM-DD
+    session_type              TEXT    NOT NULL CHECK (session_type IN
+                                ('match', 'hiit_conditioning', 'technical_tactical', 'gym_strength', 'rest_day')),
+    expected_duration_minutes INTEGER CHECK (expected_duration_minutes IS NULL OR expected_duration_minutes > 0),
+    notes                     TEXT,
+    created_at                TEXT    NOT NULL,          -- ISO-8601 UTC timestamp
+    updated_at                TEXT    NOT NULL
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
