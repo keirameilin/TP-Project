@@ -8,11 +8,20 @@ import { validateFoodEntry } from '../nutrition/validation';
 import type { SessionType, TrainingSession } from '../training/types';
 import { validateSession } from '../training/validation';
 
+/** How the player tells us a session's effort: their own 1–10 rating, or numbers from their watch. */
+export type EffortInput = 'rating' | 'watch';
+
 /** Raw day form state. Number inputs stay strings so partially-typed values ("72.") survive. */
 export interface DailyLogForm {
   sessionType: SessionType | null;
   duration: string;
+  /** Only the chosen side is saved: the rating, or the watch numbers. */
+  effortInput: EffortInput;
   rpe: number | null;
+  /** Numbers from the player's watch. */
+  avgHeartRate: string;
+  peakHeartRate: string;
+  caloriesBurned: string;
   /** In pounds, as typed; stored in kg. */
   weight: string;
 }
@@ -36,6 +45,9 @@ export interface TrainingValues {
   sessionType: SessionType;
   durationMinutes: number | null;
   rpe: number | null;
+  avgHeartRate: number | null;
+  peakHeartRate: number | null;
+  caloriesBurned: number | null;
 }
 
 /** Parsed day form: null means the section was left empty and should not be stored. */
@@ -47,7 +59,11 @@ export interface DailyLogValues {
 export const EMPTY_FORM: DailyLogForm = {
   sessionType: null,
   duration: '',
+  effortInput: 'rating',
   rpe: null,
+  avgHeartRate: '',
+  peakHeartRate: '',
+  caloriesBurned: '',
   weight: '',
 };
 
@@ -92,6 +108,9 @@ const FIELD_LABELS: Record<string, string> = {
   sessionType: 'Session type',
   duration: 'Duration',
   rpe: 'Effort',
+  avgHeartRate: 'Average heart rate',
+  peakHeartRate: 'Max heart rate',
+  caloriesBurned: 'Calories burned',
   weight: 'Weight',
   mealType: 'Meal',
   foodName: 'Food name',
@@ -106,6 +125,9 @@ const DATA_FIELD_TO_FORM: Record<string, string> = {
   sessionType: 'sessionType',
   durationMinutes: 'duration',
   rpe: 'rpe',
+  avgHeartRate: 'avgHeartRate',
+  peakHeartRate: 'peakHeartRate',
+  caloriesBurned: 'caloriesBurned',
   weightKg: 'weight',
   mealType: 'mealType',
   foodName: 'foodName',
@@ -149,15 +171,32 @@ export function parseForm(form: DailyLogForm, date: string): { values: DailyLogV
   let training: TrainingValues | null = null;
   if (form.sessionType) {
     const isRest = form.sessionType === 'rest_day';
+    const fromWatch = !isRest && form.effortInput === 'watch';
     training = {
       sessionType: form.sessionType,
       durationMinutes: isRest ? null : parseNumber(form.duration),
-      rpe: isRest ? null : form.rpe,
+      // Only the side the player chose is kept; whatever was typed on the other side is dropped.
+      rpe: isRest || fromWatch ? null : form.rpe,
+      avgHeartRate: fromWatch ? parseNumber(form.avgHeartRate) : null,
+      peakHeartRate: fromWatch ? parseNumber(form.peakHeartRate) : null,
+      caloriesBurned: fromWatch ? parseNumber(form.caloriesBurned) : null,
     };
     // The validator says "is required unless rest_day"; the form hides those inputs on rest days anyway.
     if (training.durationMinutes === null && !isRest) errors.duration = 'Duration is required';
-    if (training.rpe === null && !isRest) errors.rpe = 'Pick an effort rating';
-    issues.push(...validateSession({ date, notes: null, ...training }));
+    if (fromWatch) {
+      // The session max alone says nothing about effort.
+      if (training.avgHeartRate === null && training.caloriesBurned === null) {
+        errors.avgHeartRate = 'Enter your average heart rate or calories burned, or rate your effort instead';
+      }
+    } else if (training.rpe === null && !isRest) {
+      errors.rpe = 'Pick an effort rating';
+    }
+    issues.push(
+      ...validateSession({ date, notes: null, ...training }).filter(
+        // In watch mode the missing-effort problem is reported on the watch fields above.
+        (issue) => !(fromWatch && issue.field === 'rpe'),
+      ),
+    );
   }
 
   const weightLb = parseNumber(form.weight);
@@ -209,7 +248,14 @@ export function formFromRecords(records: {
   return {
     sessionType: training?.sessionType ?? null,
     duration: numberText(training?.durationMinutes),
+    effortInput:
+      training && (training.avgHeartRate ?? training.peakHeartRate ?? training.caloriesBurned) !== null
+        ? 'watch'
+        : 'rating',
     rpe: training?.rpe ?? null,
+    avgHeartRate: numberText(training?.avgHeartRate),
+    peakHeartRate: numberText(training?.peakHeartRate),
+    caloriesBurned: numberText(training?.caloriesBurned),
     weight: weight ? String(kgToDisplayLb(weight.weightKg)) : '',
   };
 }

@@ -15,8 +15,17 @@ export interface TrainingSession {
   sessionType: SessionType;
   /** Null only for rest days. */
   durationMinutes: number | null;
-  /** Rate of Perceived Exertion, 1–10. Null only for rest days. */
+  /**
+   * Rate of Perceived Exertion, 1–10. Null for rest days, and for sessions where the player gave
+   * watch numbers (heart rate or calories) instead of a rating.
+   */
   rpe: number | null;
+  /** Average heart rate over the session (bpm), typed in from the player's watch. Null if not given. */
+  avgHeartRate: number | null;
+  /** Highest heart rate reached in the session (bpm). Null if not given. */
+  peakHeartRate: number | null;
+  /** Total calories burned in the session (kcal), as the player's watch reported it. Null if not given. */
+  caloriesBurned: number | null;
   notes: string | null;
   /** ISO-8601 UTC timestamps. */
   createdAt: string;
@@ -29,6 +38,9 @@ export interface NewTrainingSession {
   sessionType: SessionType;
   durationMinutes?: number | null;
   rpe?: number | null;
+  avgHeartRate?: number | null;
+  peakHeartRate?: number | null;
+  caloriesBurned?: number | null;
   notes?: string | null;
 }
 

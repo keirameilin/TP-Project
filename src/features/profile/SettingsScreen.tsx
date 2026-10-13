@@ -32,6 +32,7 @@ import {
   styles as ui,
   type DropdownOption,
 } from '../dailyLog/ui';
+import { estimatedMaxHeartRate } from '../intensity/effort';
 import { FoodEntryRepository, FoodLogDayRepository } from '../nutrition';
 import { explainTargets, loadBaselineTargets, type TargetsResult } from '../targets';
 import { cmToFeetInches, feetInchesToCm } from './height';
@@ -244,7 +245,7 @@ export default function SettingsScreen() {
 
   const parsedAge = parseNumber(age);
   const estimatedMax =
-    parsedAge !== null && Number.isInteger(parsedAge) && parsedAge > 0 ? 220 - parsedAge : null;
+    parsedAge !== null && Number.isInteger(parsedAge) && parsedAge > 0 ? estimatedMaxHeartRate(parsedAge) : null;
 
   return (
     <Screen title="Player">
@@ -331,7 +332,7 @@ export default function SettingsScreen() {
               placeholder={estimatedMax ? `Estimated ${estimatedMax} bpm` : 'e.g. 198'}
               fullWidth
             />
-            <Text style={ui.hint}>Only fill this in if you’ve measured it. Otherwise it’s estimated as 220 − age.</Text>
+            <Text style={ui.hint}>Only fill this in if you’ve measured it. Otherwise it’s estimated from your age (208 − 0.7 × age).</Text>
 
             {errors.form ? <Text style={ui.errorText}>{errors.form}</Text> : null}
             {saved ? <Text style={styles.savedText}>Saved.</Text> : null}

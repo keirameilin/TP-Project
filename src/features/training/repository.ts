@@ -18,13 +18,16 @@ interface TrainingSessionRow {
   session_type: SessionType;
   duration_minutes: number | null;
   rpe: number | null;
+  avg_heart_rate: number | null;
+  peak_heart_rate: number | null;
+  calories_burned: number | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
 }
 
 const COLUMNS =
-  'id, date, session_type, duration_minutes, rpe, notes, created_at, updated_at';
+  'id, date, session_type, duration_minutes, rpe, avg_heart_rate, peak_heart_rate, calories_burned, notes, created_at, updated_at';
 
 function fromRow(row: TrainingSessionRow): TrainingSession {
   return {
@@ -33,6 +36,9 @@ function fromRow(row: TrainingSessionRow): TrainingSession {
     sessionType: row.session_type,
     durationMinutes: row.duration_minutes,
     rpe: row.rpe,
+    avgHeartRate: row.avg_heart_rate,
+    peakHeartRate: row.peak_heart_rate,
+    caloriesBurned: row.calories_burned,
     notes: row.notes,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -66,6 +72,9 @@ export class TrainingSessionRepository {
       sessionType: input.sessionType,
       durationMinutes: input.durationMinutes ?? null,
       rpe: input.rpe ?? null,
+      avgHeartRate: input.avgHeartRate ?? null,
+      peakHeartRate: input.peakHeartRate ?? null,
+      caloriesBurned: input.caloriesBurned ?? null,
       notes: normalizeNotes(input.notes),
     };
     assertValidSession(fields);
@@ -74,13 +83,17 @@ export class TrainingSessionRepository {
     const timestamp = this.now().toISOString();
     const result = await this.db.runAsync(
       `INSERT INTO training_sessions
-         (date, session_type, duration_minutes, rpe, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         (date, session_type, duration_minutes, rpe, avg_heart_rate, peak_heart_rate, calories_burned,
+          notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         fields.date,
         fields.sessionType,
         fields.durationMinutes,
         fields.rpe,
+        fields.avgHeartRate,
+        fields.peakHeartRate,
+        fields.caloriesBurned,
         fields.notes,
         timestamp,
         timestamp,
@@ -131,6 +144,9 @@ export class TrainingSessionRepository {
       durationMinutes:
         patch.durationMinutes !== undefined ? patch.durationMinutes : existing.durationMinutes,
       rpe: patch.rpe !== undefined ? patch.rpe : existing.rpe,
+      avgHeartRate: patch.avgHeartRate !== undefined ? patch.avgHeartRate : existing.avgHeartRate,
+      peakHeartRate: patch.peakHeartRate !== undefined ? patch.peakHeartRate : existing.peakHeartRate,
+      caloriesBurned: patch.caloriesBurned !== undefined ? patch.caloriesBurned : existing.caloriesBurned,
       notes: patch.notes !== undefined ? normalizeNotes(patch.notes) : existing.notes,
     };
     assertValidSession(fields);
@@ -138,13 +154,17 @@ export class TrainingSessionRepository {
 
     await this.db.runAsync(
       `UPDATE training_sessions
-       SET date = ?, session_type = ?, duration_minutes = ?, rpe = ?, notes = ?, updated_at = ?
+       SET date = ?, session_type = ?, duration_minutes = ?, rpe = ?, avg_heart_rate = ?,
+           peak_heart_rate = ?, calories_burned = ?, notes = ?, updated_at = ?
        WHERE id = ?`,
       [
         fields.date,
         fields.sessionType,
         fields.durationMinutes,
         fields.rpe,
+        fields.avgHeartRate,
+        fields.peakHeartRate,
+        fields.caloriesBurned,
         fields.notes,
         this.now().toISOString(),
         id,

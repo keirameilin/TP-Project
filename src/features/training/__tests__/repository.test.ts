@@ -29,6 +29,49 @@ describe('create', () => {
     });
   });
 
+  it('stores the optional heart rate and calories, and leaves them empty when not given', async () => {
+    const withWatch = await repo.create({
+      date: '2026-09-22',
+      sessionType: 'match',
+      durationMinutes: 90,
+      rpe: 8,
+      avgHeartRate: 158,
+      peakHeartRate: 192,
+      caloriesBurned: 910.5,
+    });
+    expect(withWatch).toMatchObject({ avgHeartRate: 158, peakHeartRate: 192, caloriesBurned: 910.5 });
+
+    const without = await repo.create({ sessionType: 'match', durationMinutes: 90, rpe: 8 });
+    expect(without).toMatchObject({ avgHeartRate: null, peakHeartRate: null, caloriesBurned: null });
+
+    // A patch changes only what it names; null clears a value.
+    const patched = await repo.update(withWatch.id, { avgHeartRate: null, caloriesBurned: 800 });
+    expect(patched).toMatchObject({ avgHeartRate: null, peakHeartRate: 192, caloriesBurned: 800 });
+  });
+
+  it('stores a session with watch numbers and no rating', async () => {
+    const s = await repo.create({ sessionType: 'match', durationMinutes: 90, avgHeartRate: 158 });
+    expect(s).toMatchObject({ rpe: null, avgHeartRate: 158 });
+  });
+
+  it('refuses a session with neither a rating nor watch numbers, in the database too', async () => {
+    await expect(repo.create({ sessionType: 'match', durationMinutes: 90 })).rejects.toThrow(ValidationError);
+    await expect(
+      db.runAsync(
+        `INSERT INTO training_sessions (date, session_type, duration_minutes, created_at, updated_at)
+         VALUES ('2026-09-01', 'match', 90, 'now', 'now')`,
+        [],
+      ),
+    ).rejects.toThrow(/CHECK constraint failed/);
+  });
+
+  it('rejects an average heart rate above the session max', async () => {
+    await expect(
+      repo.create({ sessionType: 'match', durationMinutes: 90, rpe: 8, avgHeartRate: 180, peakHeartRate: 170 }),
+    ).rejects.toThrow(ValidationError);
+    expect(await repo.list()).toEqual([]);
+  });
+
   it('creates a rest day without duration or RPE', async () => {
     const s = await repo.create({ sessionType: 'rest_day', notes: '  sore hamstrings ' });
     expect(s).toMatchObject({ durationMinutes: null, rpe: null, notes: 'sore hamstrings' });

@@ -34,15 +34,84 @@ describe('parseForm', () => {
     const { values, errors } = parseForm(form({ sessionType: 'match', duration: '90', rpe: 8, weight: '160,5' }), DATE);
     expect(errors).toEqual({});
     expect(values).toEqual({
-      training: { sessionType: 'match', durationMinutes: 90, rpe: 8 },
+      training: {
+        sessionType: 'match',
+        durationMinutes: 90,
+        rpe: 8,
+        avgHeartRate: null,
+        peakHeartRate: null,
+        caloriesBurned: null,
+      },
       weightKg: lbToKg(160.5),
     });
   });
 
-  it('ignores hidden duration and effort on a rest day', () => {
-    const { values, errors } = parseForm(form({ sessionType: 'rest_day', duration: 'x', rpe: 4 }), DATE);
+  const watch = { avgHeartRate: '158', peakHeartRate: '192', caloriesBurned: '910,5' };
+
+  it('keeps the watch numbers and drops the rating when the player chose watch numbers', () => {
+    const { values, errors } = parseForm(
+      form({ sessionType: 'match', duration: '90', effortInput: 'watch', rpe: 8, ...watch }),
+      DATE,
+    );
     expect(errors).toEqual({});
-    expect(values.training).toEqual({ sessionType: 'rest_day', durationMinutes: null, rpe: null });
+    expect(values.training).toMatchObject({ rpe: null, avgHeartRate: 158, peakHeartRate: 192, caloriesBurned: 910.5 });
+  });
+
+  it('keeps the rating and drops the watch numbers when the player chose to rate it', () => {
+    const { values, errors } = parseForm(
+      form({ sessionType: 'match', duration: '90', effortInput: 'rating', rpe: 8, ...watch }),
+      DATE,
+    );
+    expect(errors).toEqual({});
+    expect(values.training).toMatchObject({ rpe: 8, avgHeartRate: null, peakHeartRate: null, caloriesBurned: null });
+  });
+
+  it('accepts watch numbers with only a heart rate or only calories', () => {
+    const base = { sessionType: 'match', duration: '90', effortInput: 'watch' } as const;
+    expect(parseForm(form({ ...base, avgHeartRate: '158' }), DATE).errors).toEqual({});
+    expect(parseForm(form({ ...base, caloriesBurned: '700' }), DATE).errors).toEqual({});
+  });
+
+  it('asks for a heart rate or calories when watch numbers are chosen but empty', () => {
+    const base = { sessionType: 'match', duration: '90', effortInput: 'watch' } as const;
+    const message = 'Enter your average heart rate or calories burned, or rate your effort instead';
+    expect(parseForm(form(base), DATE).errors).toEqual({ avgHeartRate: message });
+    // The session max alone doesn't say how hard the session was. A rating typed earlier doesn't count.
+    expect(parseForm(form({ ...base, rpe: 8, peakHeartRate: '190' }), DATE).errors).toEqual({ avgHeartRate: message });
+  });
+
+  it('shows a clear message under each bad heart rate or calories field', () => {
+    const session = { sessionType: 'match', duration: '20', effortInput: 'watch' } as const;
+    expect(parseForm(form({ ...session, avgHeartRate: '250', peakHeartRate: 'abc' }), DATE).errors).toEqual({
+      avgHeartRate: 'Average heart rate must be a whole number between 40 and 230 bpm',
+      peakHeartRate: 'Max heart rate must be a whole number between 40 and 230 bpm',
+    });
+    expect(parseForm(form({ ...session, avgHeartRate: '180', peakHeartRate: '170' }), DATE).errors).toEqual({
+      avgHeartRate: "Average heart rate can't be higher than the session's max heart rate",
+    });
+    expect(parseForm(form({ ...session, caloriesBurned: '3500' }), DATE).errors).toEqual({
+      caloriesBurned: 'Calories burned must be between 0 and 3000 kcal',
+    });
+    expect(parseForm(form({ ...session, caloriesBurned: '3000' }), DATE).errors).toEqual({
+      caloriesBurned:
+        "Calories burned of 3000 kcal in 20 minutes is over 30 kcal a minute, which isn't realistic. Check the calories and the duration.",
+    });
+  });
+
+  it('ignores hidden duration and effort on a rest day', () => {
+    const { values, errors } = parseForm(
+      form({ sessionType: 'rest_day', duration: 'x', effortInput: 'watch', rpe: 4, avgHeartRate: '150', caloriesBurned: '500' }),
+      DATE,
+    );
+    expect(errors).toEqual({});
+    expect(values.training).toEqual({
+      sessionType: 'rest_day',
+      durationMinutes: null,
+      rpe: null,
+      avgHeartRate: null,
+      peakHeartRate: null,
+      caloriesBurned: null,
+    });
   });
 
   it('flags missing training fields and data-layer range errors per input', () => {
@@ -112,6 +181,29 @@ describe('saving', () => {
     const full = form({ sessionType: 'match', duration: '90', rpe: 8, weight: '160.4' });
     await save(full);
     expect(formFromRecords(await loadDay(repos, DATE))).toEqual(full);
+  });
+
+  it('saves a session with watch numbers and no rating, and reopens it on the watch side', async () => {
+    const full = form({
+      sessionType: 'match',
+      duration: '90',
+      effortInput: 'watch',
+      avgHeartRate: '158',
+      peakHeartRate: '192',
+      caloriesBurned: '910',
+    });
+    await save(full);
+    expect((await loadDay(repos, DATE)).training).toMatchObject({ rpe: null, avgHeartRate: 158, caloriesBurned: 910 });
+    expect(formFromRecords(await loadDay(repos, DATE))).toEqual(full);
+  });
+
+  it('replaces one kind of effort with the other when the player switches', async () => {
+    await save(form({ sessionType: 'match', duration: '90', effortInput: 'watch', avgHeartRate: '158' }));
+    await save(form({ sessionType: 'match', duration: '90', effortInput: 'rating', rpe: 7, avgHeartRate: '158' }));
+    expect((await loadDay(repos, DATE)).training).toMatchObject({ rpe: 7, avgHeartRate: null });
+
+    await save(form({ sessionType: 'match', duration: '90', effortInput: 'watch', rpe: 7, caloriesBurned: '800' }));
+    expect((await loadDay(repos, DATE)).training).toMatchObject({ rpe: null, caloriesBurned: 800 });
   });
 
   it('updates instead of duplicating when saved again', async () => {

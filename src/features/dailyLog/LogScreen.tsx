@@ -5,8 +5,16 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import { ValidationError } from '../../lib/validation';
 import { kgToDisplayLb } from '../bodyweight';
+import { sessionCalories, sessionEffort, type PlayerInput } from '../intensity/effort';
+import {
+  CALORIES_SOURCE_LABELS,
+  describeCalories,
+  describeEffort,
+  EFFORT_SOURCE_LABELS,
+} from '../intensity/sessionText';
 import { describePlan, type PlannedSession } from '../planning';
-import { RPE_MAX, RPE_MIN, SESSION_OPTIONS } from '../training';
+import { weightForDate } from '../targets';
+import { RPE_MAX, RPE_MIN, SESSION_OPTIONS, type TrainingSession } from '../training';
 import { DateNav } from './DateNav';
 import {
   EMPTY_FORM,
@@ -24,6 +32,7 @@ import {
   ACCENT,
   ACCENT_TINT,
   Button,
+  Chip,
   ERROR,
   Field,
   FieldError,
@@ -50,6 +59,9 @@ function effortWord(rpe: number): string {
 }
 
 type Status = { kind: 'saved' | 'error'; text: string } | null;
+
+/** Used until the profile and weight have loaded: only the player's own rating can be shown. */
+const UNKNOWN_PLAYER: PlayerInput = { age: null, sex: null, maxHeartRate: null, weightKg: null };
 
 /** The Log tab: the selected day's training and body weight, saved together with "Save Day". */
 export default function LogScreen() {
@@ -84,12 +96,27 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
   const [pristineWeight, setPristineWeight] = useState('');
   // What was planned for this day, if anything; the plan itself is edited on the Plan tab.
   const [plan, setPlan] = useState<PlannedSession | null>(null);
+  // The session as stored, and what is known about the player: the summary is worked out from these.
+  const [savedTraining, setSavedTraining] = useState<TrainingSession | null>(null);
+  const [player, setPlayer] = useState<PlayerInput>(UNKNOWN_PLAYER);
+
+  /** Age, sex and max heart rate from the profile, and the weigh-in that applies to this day. */
+  const readPlayer = useCallback(async (): Promise<PlayerInput> => {
+    const [profile, weightKg] = await Promise.all([repos.profile.get(), weightForDate(repos.weight, date)]);
+    return {
+      age: profile?.age ?? null,
+      sex: profile?.sex ?? null,
+      maxHeartRate: profile?.maxHeartRate ?? null,
+      weightKg,
+    };
+  }, [repos, date]);
 
   useEffect(() => {
     let cancelled = false;
     loadDay(repos, date).then(
       (records) => {
         if (cancelled) return;
+        setSavedTraining(records.training);
         const loadedForm = formFromRecords(records);
         setForm(loadedForm);
         setPristineWeight(loadedForm.weight);
@@ -123,6 +150,14 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
           if (!cancelled) setPlan(null);
         },
       );
+      readPlayer().then(
+        (current) => {
+          if (!cancelled) setPlayer(current);
+        },
+        () => {
+          // Keep what is shown.
+        },
+      );
       readWeightText().then(
         (current) => {
           if (cancelled) return;
@@ -137,7 +172,7 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
       return () => {
         cancelled = true;
       };
-    }, [repos, date, readWeightText, pristineWeight]),
+    }, [repos, date, readWeightText, readPlayer, pristineWeight]),
   );
 
   /** Copies the day's plan into the training form; the player still adds effort and saves. */
@@ -154,7 +189,9 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
 
   function update<K extends keyof DailyLogForm>(key: K, value: DailyLogForm[K]) {
     setForm((f) => ({ ...f, [key]: value }));
-    setErrors((e) => ({ ...e, [key]: undefined, form: undefined }));
+    // "Enter a heart rate or calories" sits under the heart rate but is answered by either field.
+    const alsoClears = key === 'caloriesBurned' || key === 'effortInput' ? { avgHeartRate: undefined } : {};
+    setErrors((e) => ({ ...e, [key]: undefined, form: undefined, ...alsoClears }));
     setStatus(null);
   }
 
@@ -173,7 +210,11 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
         return;
       }
 
-      const savedForm = formFromRecords(await saveDay(repos, date, values));
+      const records = await saveDay(repos, date, values);
+      setSavedTraining(records.training);
+      // A new weigh-in changes the calorie estimates.
+      setPlayer(await readPlayer().catch(() => player));
+      const savedForm = formFromRecords(records);
       setForm(savedForm);
       setPristineWeight(savedForm.weight);
       setStatus({ kind: 'saved', text: 'Day saved' });
@@ -254,33 +295,87 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
               placeholder="e.g. 90"
               fullWidth
             />
-            <View style={styles.effortHeader}>
-              <Text style={[ui.label, styles.effortLabel]}>Effort</Text>
-              <Text style={styles.effortValue}>
-                {form.rpe === null ? '1 = very easy · 10 = max' : `${form.rpe} · ${effortWord(form.rpe)}`}
-              </Text>
+            <Text style={[ui.label, styles.effortLabel]}>How hard was it?</Text>
+            <View style={styles.effortChoice}>
+              <Chip
+                label="Rate it myself"
+                selected={form.effortInput === 'rating'}
+                onPress={() => update('effortInput', 'rating')}
+              />
+              <Chip
+                label="Use my watch numbers"
+                selected={form.effortInput === 'watch'}
+                onPress={() => update('effortInput', 'watch')}
+              />
             </View>
-            <View style={styles.rpeRow}>
-              {RPE_VALUES.map((n) => {
-                const selected = form.rpe === n;
-                return (
-                  <Pressable
-                    key={n}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={`Effort ${n}, ${effortWord(n)}`}
-                    onPress={() => update('rpe', n)}
-                    style={[styles.rpeButton, selected && ui.selected]}
-                  >
-                    <Text style={[styles.rpeText, selected && ui.selectedText]}>{n}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <FieldError message={errors.rpe} />
+
+            {form.effortInput === 'rating' ? (
+              <>
+                <View style={styles.effortHeader}>
+                  <Text style={[ui.label, styles.effortLabel]}>Effort</Text>
+                  <Text style={styles.effortValue}>
+                    {form.rpe === null ? '1 = very easy · 10 = max' : `${form.rpe} · ${effortWord(form.rpe)}`}
+                  </Text>
+                </View>
+                <View style={styles.rpeRow}>
+                  {RPE_VALUES.map((n) => {
+                    const selected = form.rpe === n;
+                    return (
+                      <Pressable
+                        key={n}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={`Effort ${n}, ${effortWord(n)}`}
+                        onPress={() => update('rpe', n)}
+                        style={[styles.rpeButton, selected && ui.selected]}
+                      >
+                        <Text style={[styles.rpeText, selected && ui.selectedText]}>{n}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <FieldError message={errors.rpe} />
+              </>
+            ) : (
+              <>
+                <Text style={ui.hint}>
+                  Enter your average heart rate, calories burned, or both. Your effort level is worked out from them.
+                </Text>
+                <View style={ui.grid}>
+                  <Field
+                    label="Average heart rate (bpm)"
+                    value={form.avgHeartRate}
+                    onChangeText={(t) => update('avgHeartRate', t)}
+                    error={errors.avgHeartRate}
+                    keyboardType="number-pad"
+                    placeholder="e.g. 150"
+                  />
+                  <Field
+                    label="Max heart rate (bpm)"
+                    value={form.peakHeartRate}
+                    onChangeText={(t) => update('peakHeartRate', t)}
+                    error={errors.peakHeartRate}
+                    keyboardType="number-pad"
+                    placeholder="e.g. 185"
+                    hint="Highest in this session (optional)"
+                  />
+                  <Field
+                    label="Calories burned (kcal)"
+                    value={form.caloriesBurned}
+                    onChangeText={(t) => update('caloriesBurned', t)}
+                    error={errors.caloriesBurned}
+                    placeholder="e.g. 650"
+                    hint="The total for the whole session, not per hour."
+                    fullWidth
+                  />
+                </View>
+              </>
+            )}
           </>
         ) : null}
       </Section>
+
+      {savedTraining ? <SessionSummary session={savedTraining} player={player} /> : null}
 
       <Section title="Body weight" subtitle="Optional" icon="scale-outline">
         <Field
@@ -309,8 +404,76 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
   );
 }
 
+/**
+ * The saved session's effort level and calories burned, each with a label for where it came from.
+ * Each is worked out from one source only; nothing here sets one source against another.
+ */
+function SessionSummary({ session, player }: { session: TrainingSession; player: PlayerInput }) {
+  if (session.sessionType === 'rest_day') {
+    return (
+      <Section title="Session summary" icon="pulse">
+        <Text style={ui.hint}>Rest day: no effort level and no training calories.</Text>
+      </Section>
+    );
+  }
+
+  const effort = sessionEffort(session, player);
+  const calories = sessionCalories(session, player);
+  return (
+    <Section title="Session summary" icon="pulse" subtitle="Updates when you save">
+      <SummaryRow
+        label="Effort level"
+        value={effort.effort ? `${effort.effort.level} / 10` : '—'}
+        source={effort.effort ? EFFORT_SOURCE_LABELS[effort.effort.source] : null}
+        lines={describeEffort(effort)}
+      />
+      <SummaryRow
+        label="Calories burned"
+        value={calories.calories ? `${calories.calories.kcal.toLocaleString()} kcal` : '—'}
+        source={calories.calories ? CALORIES_SOURCE_LABELS[calories.calories.source] : null}
+        lines={describeCalories(calories)}
+      />
+    </Section>
+  );
+}
+
+function SummaryRow(props: { label: string; value: string; source: string | null; lines: string[] }) {
+  return (
+    <View
+      style={styles.summaryRow}
+      accessible
+      accessibilityLabel={`${props.label}: ${props.value}${props.source ? `, ${props.source}` : ''}. ${props.lines.join(' ')}`}
+    >
+      <View style={styles.summaryHeader}>
+        <Text style={ui.label}>{props.label}</Text>
+        {props.source ? <Text style={styles.sourceTag}>{props.source}</Text> : null}
+      </View>
+      <Text style={styles.summaryValue}>{props.value}</Text>
+      {props.lines.map((line) => (
+        <Text key={line} style={ui.hint}>
+          {line}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   loading: { marginTop: 24 },
+  effortChoice: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  summaryRow: { gap: 4 },
+  summaryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  summaryValue: { fontSize: 24, fontWeight: '700', color: INK },
+  sourceTag: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: ACCENT,
+    backgroundColor: ACCENT_TINT,
+    borderRadius: 8,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    overflow: 'hidden',
+  },
   planBox: {
     flexDirection: 'row',
     alignItems: 'center',

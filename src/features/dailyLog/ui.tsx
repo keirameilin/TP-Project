@@ -159,6 +159,8 @@ export function Field(props: {
   /** Defaults to a decimal keypad, since most fields here are numbers. */
   keyboardType?: KeyboardTypeOptions;
   fullWidth?: boolean;
+  /** Helper text under the input. */
+  hint?: string;
 }) {
   const [focused, setFocused] = useState(false);
   return (
@@ -175,6 +177,7 @@ export function Field(props: {
         onBlur={() => setFocused(false)}
         style={[styles.input, focused && styles.inputFocused, props.error && styles.inputError]}
       />
+      {props.hint ? <Text style={styles.hint}>{props.hint}</Text> : null}
       <FieldError message={props.error} />
     </View>
   );

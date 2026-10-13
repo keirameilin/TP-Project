@@ -10,6 +10,9 @@ const valid: SessionFields = {
   sessionType: 'technical_tactical',
   durationMinutes: 90,
   rpe: 6,
+  avgHeartRate: null,
+  peakHeartRate: null,
+  caloriesBurned: null,
   notes: null,
 };
 
@@ -69,5 +72,69 @@ describe('dates', () => {
   it('formats dates in local time, not UTC', () => {
     // 23:30 local on Sep 24 must stay Sep 24 regardless of timezone offset.
     expect(toLocalDateString(new Date(2026, 8, 24, 23, 30))).toBe('2026-09-24');
+  });
+});
+
+describe('validateSession: heart rate and calories from a watch', () => {
+  const messages = (s: SessionFields) => validateSession(s).map((i) => `${i.field} ${i.message}`);
+
+  it('accepts a session with all three, and with any of them left out', () => {
+    expect(validateSession({ ...valid, avgHeartRate: 150, peakHeartRate: 185, caloriesBurned: 700 })).toEqual([]);
+    expect(validateSession({ ...valid, avgHeartRate: 150 })).toEqual([]);
+    expect(validateSession({ ...valid, peakHeartRate: 185 })).toEqual([]);
+    expect(validateSession({ ...valid, caloriesBurned: 0 })).toEqual([]);
+  });
+
+  it('accepts the ends of each range', () => {
+    expect(validateSession({ ...valid, avgHeartRate: 40, peakHeartRate: 230 })).toEqual([]);
+    expect(validateSession({ ...valid, durationMinutes: 100, caloriesBurned: 3000 })).toEqual([]);
+  });
+
+  it('rejects heart rates outside 40–230 bpm or not whole', () => {
+    for (const bpm of [39, 231, 150.5, NaN]) {
+      expect(messages({ ...valid, avgHeartRate: bpm })).toEqual(['avgHeartRate must be a whole number between 40 and 230 bpm']);
+      expect(messages({ ...valid, peakHeartRate: bpm })).toEqual(['peakHeartRate must be a whole number between 40 and 230 bpm']);
+    }
+  });
+
+  it('rejects calories outside 0–3000 kcal', () => {
+    for (const kcal of [-1, 3001, NaN]) {
+      expect(messages({ ...valid, caloriesBurned: kcal })).toEqual(['caloriesBurned must be between 0 and 3000 kcal']);
+    }
+  });
+
+  it('rejects an average heart rate above the session max', () => {
+    expect(messages({ ...valid, avgHeartRate: 170, peakHeartRate: 160 })).toEqual([
+      "avgHeartRate can't be higher than the session's max heart rate",
+    ]);
+    expect(validateSession({ ...valid, avgHeartRate: 160, peakHeartRate: 160 })).toEqual([]);
+  });
+
+  it('flags calories that are unrealistic for the session length', () => {
+    // 3000 kcal in 20 minutes is 150 kcal a minute.
+    expect(messages({ ...valid, durationMinutes: 20, caloriesBurned: 3000 })).toEqual([
+      "caloriesBurned of 3000 kcal in 20 minutes is over 30 kcal a minute, which isn't realistic. Check the calories and the duration.",
+    ]);
+    // Exactly 30 kcal a minute is allowed; 40 a minute in a 5-minute session is not.
+    expect(validateSession({ ...valid, durationMinutes: 20, caloriesBurned: 600 })).toEqual([]);
+    expect(fieldsWithIssues({ ...valid, durationMinutes: 5, caloriesBurned: 200 })).toEqual(['caloriesBurned']);
+  });
+
+  it('does not require a rating when a heart rate or calories are given', () => {
+    expect(validateSession({ ...valid, rpe: null, avgHeartRate: 150 })).toEqual([]);
+    expect(validateSession({ ...valid, rpe: null, caloriesBurned: 700 })).toEqual([]);
+    // The session max alone is not a measure of effort.
+    expect(messages({ ...valid, rpe: null, peakHeartRate: 185 })).toEqual([
+      'rpe is required unless a heart rate or calories are given',
+    ]);
+  });
+
+  it('rejects watch numbers on a rest day', () => {
+    const rest: SessionFields = { ...valid, sessionType: 'rest_day', durationMinutes: null, rpe: null };
+    expect(fieldsWithIssues({ ...rest, avgHeartRate: 60, peakHeartRate: 70, caloriesBurned: 10 })).toEqual([
+      'avgHeartRate',
+      'peakHeartRate',
+      'caloriesBurned',
+    ]);
   });
 });

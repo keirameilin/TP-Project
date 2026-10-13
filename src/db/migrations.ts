@@ -108,6 +108,44 @@ const MIGRATIONS: string[] = [
     updated_at                TEXT    NOT NULL
   );
   `,
+  // v9: numbers from the player's watch, typed in by hand for a session (all optional)
+  `
+  ALTER TABLE training_sessions ADD COLUMN avg_heart_rate INTEGER
+    CHECK (avg_heart_rate IS NULL OR avg_heart_rate BETWEEN 40 AND 230);
+  ALTER TABLE training_sessions ADD COLUMN peak_heart_rate INTEGER
+    CHECK (peak_heart_rate IS NULL OR peak_heart_rate BETWEEN 40 AND 230);
+  ALTER TABLE training_sessions ADD COLUMN calories_burned REAL
+    CHECK (calories_burned IS NULL OR calories_burned BETWEEN 0 AND 3000);
+  `,
+  // v10: a session's effort can come from the player's rating OR from their watch numbers, so the
+  // rating is no longer required when a heart rate or calories are given. SQLite can't change a
+  // CHECK in place, so the table is rebuilt.
+  `
+  CREATE TABLE training_sessions_new (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    date             TEXT    NOT NULL UNIQUE,  -- local calendar date, YYYY-MM-DD
+    session_type     TEXT    NOT NULL CHECK (session_type IN
+                       ('match', 'hiit_conditioning', 'technical_tactical', 'gym_strength', 'rest_day')),
+    duration_minutes INTEGER CHECK (duration_minutes IS NULL OR duration_minutes > 0),
+    rpe              INTEGER CHECK (rpe IS NULL OR rpe BETWEEN 1 AND 10),
+    avg_heart_rate   INTEGER CHECK (avg_heart_rate IS NULL OR avg_heart_rate BETWEEN 40 AND 230),
+    peak_heart_rate  INTEGER CHECK (peak_heart_rate IS NULL OR peak_heart_rate BETWEEN 40 AND 230),
+    calories_burned  REAL    CHECK (calories_burned IS NULL OR calories_burned BETWEEN 0 AND 3000),
+    notes            TEXT,
+    created_at       TEXT    NOT NULL,          -- ISO-8601 UTC timestamp
+    updated_at       TEXT    NOT NULL,
+    CHECK (session_type = 'rest_day' OR (duration_minutes IS NOT NULL AND
+      (rpe IS NOT NULL OR avg_heart_rate IS NOT NULL OR calories_burned IS NOT NULL)))
+  );
+  INSERT INTO training_sessions_new
+    (id, date, session_type, duration_minutes, rpe, avg_heart_rate, peak_heart_rate, calories_burned,
+     notes, created_at, updated_at)
+  SELECT id, date, session_type, duration_minutes, rpe, avg_heart_rate, peak_heart_rate, calories_burned,
+         notes, created_at, updated_at
+  FROM training_sessions;
+  DROP TABLE training_sessions;
+  ALTER TABLE training_sessions_new RENAME TO training_sessions;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

@@ -1,6 +1,14 @@
 import { baselineTargets, type BaselineInput } from '../baseline';
 import { ESTIMATE_NOTE, explainTargets } from '../explain';
-import { SOURCE_TYPES, TARGET_RULES, type Rule, type TargetRuleName } from '../rules';
+import {
+  EFFORT_RULES,
+  SESSION_MET_RULE,
+  SOURCE_TYPES,
+  TARGET_RULES,
+  type EffortRuleName,
+  type Rule,
+  type TargetRuleName,
+} from '../rules';
 
 const rules = Object.entries(TARGET_RULES) as [TargetRuleName, Rule<unknown>][];
 const adult: BaselineInput = { sex: 'male', age: 25, heightCm: 180, weightKg: 75, level: 'professional' };
@@ -42,6 +50,50 @@ describe('TARGET_RULES', () => {
     expect(TARGET_RULES.fatEnergyFraction.value).toBe(0.25);
     expect(TARGET_RULES.restingCalories.value).toEqual({ perKg: 10, perCm: 6.25, perYear: -5, male: 5, female: -161 });
     expect(TARGET_RULES.kcalPerGram.value).toEqual({ protein: 4, carbs: 4, fat: 9 });
+  });
+});
+
+describe('EFFORT_RULES', () => {
+  const effortRules = Object.entries(EFFORT_RULES) as [EffortRuleName, Rule<unknown>][];
+
+  it.each(effortRules)('%s has a valid source type', (_name, rule) => {
+    expect(SOURCE_TYPES).toContain(rule.sourceType);
+  });
+
+  it('gives a citation for every standard formula and none for estimates', () => {
+    for (const [name, rule] of effortRules) {
+      if (rule.sourceType === 'standard_formula') expect([name, rule.reference]).toEqual([name, expect.any(String)]);
+      if (rule.sourceType === 'estimate') expect([name, rule.reference]).toEqual([name, null]);
+    }
+  });
+
+  it('classifies each rule as agreed, with nothing claimed from the UEFA statement', () => {
+    const byType = (type: string) => effortRules.filter(([, r]) => r.sourceType === type).map(([name]) => name);
+    expect(byType('sourced')).toEqual([]);
+    expect(byType('standard_formula')).toEqual(['estimatedMaxHeartRate', 'sessionLoad', 'caloriesFromHeartRate', 'matchMet']);
+    expect(byType('estimate')).toEqual([
+      'heartRateRangeBpm',
+      'caloriesBurnedRangeKcal',
+      'maxKcalPerMinute',
+      'heartRateZoneBounds',
+      'effortAtZoneBounds',
+      'effortFromMet',
+      'conditioningMet',
+      'gymStrengthMet',
+      'technicalMet',
+      'restMet',
+    ]);
+  });
+
+  it('has a MET value for every session type', () => {
+    const met = (type: keyof typeof SESSION_MET_RULE) => EFFORT_RULES[SESSION_MET_RULE[type]].value;
+    expect([met('match'), met('hiit_conditioning'), met('gym_strength'), met('technical_tactical'), met('rest_day')]).toEqual([
+      9.5, 8, 5, 5, 0,
+    ]);
+  });
+
+  it('lines the effort levels up with the zone bounds', () => {
+    expect(EFFORT_RULES.effortAtZoneBounds.value).toHaveLength(EFFORT_RULES.heartRateZoneBounds.value.length);
   });
 });
 

@@ -1,4 +1,5 @@
 import type { PlayerLevel } from '../profile/types';
+import type { SessionType } from '../training/types';
 
 /**
  * Where a rule's value comes from:
@@ -107,3 +108,145 @@ export const TARGET_RULES = {
 } as const satisfies Record<string, Rule<unknown>>;
 
 export type TargetRuleName = keyof typeof TARGET_RULES;
+
+/**
+ * Every constant behind a session's effort level and calories burned (src/features/intensity).
+ * None of these come from the UEFA statement, so none is `sourced`: each is either a published
+ * formula (`standard_formula`, with its citation) or our own assumption (`estimate`).
+ */
+export const EFFORT_RULES = {
+  // DESIGN DECISION, not from a source. The heart rates a player may type in for a session.
+  heartRateRangeBpm: {
+    value: { min: 40, max: 230 },
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // DESIGN DECISION, not from a source. The session calories a player may type in.
+  caloriesBurnedRangeKcal: {
+    value: { min: 0, max: 3000 },
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // DESIGN DECISION, not from a source. Entered calories above this rate for the session's length
+  // are treated as a typing mistake (e.g. 3000 kcal in 20 minutes is 150 kcal a minute).
+  maxKcalPerMinute: {
+    value: 30,
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // Tanaka H, Monahan KD, Seals DR. Age-predicted maximal heart rate revisited. J Am Coll Cardiol
+  // 2001;37(1):153–156. Max heart rate = 208 − 0.7 × age. Used only when the player hasn't entered
+  // a measured max heart rate.
+  estimatedMaxHeartRate: {
+    value: { base: 208, perYear: -0.7 },
+    sourceType: 'standard_formula',
+    reference: 'Tanaka et al., J Am Coll Cardiol 2001;37(1):153–156',
+  },
+
+  // The widely used five heart-rate zones, as fractions of max heart rate: 50–60%, 60–70%,
+  // 70–80%, 80–90%, 90–100%. A convention, not checked against a publication here.
+  heartRateZoneBounds: {
+    value: [0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // DESIGN DECISION, not from a source. The 1–10 effort level at each zone bound above: zone 1
+  // spans 1–3, zone 2 3–5, zone 3 5–7, zone 4 7–9, zone 5 9–10. Effort is interpolated inside a zone.
+  effortAtZoneBounds: {
+    value: [1, 3, 5, 7, 9, 10],
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // DESIGN DECISION, not from a source. Anchor points turning the MET implied by entered calories
+  // (kcal ÷ (kg × hours)) into a 1–10 effort level, interpolated in between; 12 MET or more is 10.
+  effortFromMet: {
+    value: [
+      { met: 2, effort: 2 },
+      { met: 3, effort: 4 },
+      { met: 6, effort: 7 },
+      { met: 9, effort: 9 },
+      { met: 12, effort: 10 },
+    ],
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // Foster C, Florhaug JA, Franklin J, et al. A new approach to monitoring exercise training.
+  // J Strength Cond Res 2001;15(1):109–115. Session RPE: training load = the player's 1–10 rating
+  // × the session's minutes.
+  sessionLoad: {
+    value: 'rating × minutes',
+    sourceType: 'standard_formula',
+    reference: 'Foster et al., J Strength Cond Res 2001;15(1):109–115',
+  },
+
+  // Keytel LR, Goedecke JH, Noakes TD, et al. Prediction of energy expenditure from heart rate
+  // monitoring during submaximal exercise. J Sports Sci 2005;23(3):289–297. The model without
+  // VO2max: kJ per minute = intercept + perBpm × heart rate + perKg × weight + perYear × age, with
+  // separate coefficients for men and women. The coefficients were taken from secondary sources
+  // that reproduce the equation, not read from the paper itself.
+  caloriesFromHeartRate: {
+    value: {
+      male: { intercept: -55.0969, perBpm: 0.6309, perKg: 0.1988, perYear: 0.2017 },
+      female: { intercept: -20.4022, perBpm: 0.4472, perKg: -0.1263, perYear: 0.074 },
+      kjPerKcal: 4.184,
+    },
+    sourceType: 'standard_formula',
+    reference: 'Keytel et al., J Sports Sci 2005;23(3):289–297',
+  },
+
+  // 2024 Adult Compendium of Physical Activities (pacompendium.com), code 15605, "Soccer,
+  // competitive": 9.5 MET. Calories = MET × weight (kg) × hours.
+  matchMet: {
+    value: 9.5,
+    sourceType: 'standard_formula',
+    reference: '2024 Adult Compendium of Physical Activities, code 15605',
+  },
+
+  // DESIGN DECISION. The Compendium has no entry for football conditioning; its nearest are
+  // circuit training at vigorous intensity (7.5) and high-intensity interval exercise (7.0–11.0).
+  conditioningMet: {
+    value: 8,
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // DESIGN DECISION. The Compendium's resistance-training entries run from 3.5 to 6.0 depending
+  // on the kind of lifting; 5 is our middle value for a gym session.
+  gymStrengthMet: {
+    value: 5,
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // DESIGN DECISION. The Compendium has no entry for technical or tactical football practice
+  // (casual soccer is 7.0); 5 assumes drills with frequent stops.
+  technicalMet: {
+    value: 5,
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // DESIGN DECISION. A rest day has no session, so no session calories.
+  restMet: {
+    value: 0,
+    sourceType: 'estimate',
+    reference: null,
+  },
+} as const satisfies Record<string, Rule<unknown>>;
+
+export type EffortRuleName = keyof typeof EFFORT_RULES;
+
+/** The MET rule for each session type. */
+export const SESSION_MET_RULE = {
+  match: 'matchMet',
+  hiit_conditioning: 'conditioningMet',
+  gym_strength: 'gymStrengthMet',
+  technical_tactical: 'technicalMet',
+  rest_day: 'restMet',
+} as const satisfies Record<SessionType, EffortRuleName>;
