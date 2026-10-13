@@ -2,7 +2,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text } from 'react-native';
 
-import { loadBaselineTargets, type TargetsResult } from '../targets';
+import { explainDayTargets, loadDayTargets, type DayTargetsResult } from '../targets';
 import { DateNav } from './DateNav';
 import { FoodSection } from './FoodSection';
 import { useSelectedDate } from './SelectedDate';
@@ -13,14 +13,15 @@ import { ON_PITCH, Screen, styles as ui } from './ui';
 export default function FoodScreen() {
   const { date } = useSelectedDate();
   const { repos, error } = useDailyLogRepos();
-  const [targets, setTargets] = useState<TargetsResult | null>(null);
+  const [targets, setTargets] = useState<DayTargetsResult | null>(null);
 
-  // Runs on focus too, so a new weigh-in or profile change on another tab updates the targets.
+  // The day's targets follow its training: a logged session, else the plan. Runs on focus too, so a
+  // new weigh-in, session, plan or profile change on another tab updates them.
   useFocusEffect(
     useCallback(() => {
       if (!repos) return;
       let cancelled = false;
-      loadBaselineTargets(repos, date).then(
+      loadDayTargets(repos, date).then(
         (result) => {
           if (!cancelled) setTargets(result);
         },
@@ -44,7 +45,8 @@ export default function FoodScreen() {
         <ActivityIndicator color={ON_PITCH} style={styles.loading} />
       ) : (
         // Keyed by date so switching days resets the list and any half-typed item.
-        <FoodSection key={date} repos={repos} date={date} targets={targets} />
+        <FoodSection key={date} repos={repos} date={date} targets={targets}
+          targetNote={targets?.ok ? explainDayTargets('This day', targets.targets) : null} />
       )}
     </Screen>
   );

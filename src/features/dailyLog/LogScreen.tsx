@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -58,7 +58,19 @@ function effortWord(rpe: number): string {
   return 'Max effort';
 }
 
+/** A word for each session rating, shown next to the number the player picked. */
+function qualityWord(quality: number): string {
+  if (quality <= 2) return 'Very poor';
+  if (quality <= 4) return 'Poor';
+  if (quality <= 6) return 'OK';
+  if (quality <= 8) return 'Good';
+  if (quality === 9) return 'Very good';
+  return 'Excellent';
+}
+
 type Status = { kind: 'saved' | 'error'; text: string } | null;
+
+const openReview = (date: string) => router.push({ pathname: '/review', params: { date } });
 
 /** Used until the profile and weight have loaded: only the player's own rating can be shown. */
 const UNKNOWN_PLAYER: PlayerInput = { age: null, sex: null, maxHeartRate: null, weightKg: null };
@@ -295,7 +307,7 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
               placeholder="e.g. 90"
               fullWidth
             />
-            <Text style={[ui.label, styles.effortLabel]}>How hard was it?</Text>
+            <Text style={[ui.label, styles.effortLabel]}>How hard was it? (effort)</Text>
             <View style={styles.effortChoice}>
               <Chip
                 label="Rate it myself"
@@ -371,6 +383,43 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
                 </View>
               </>
             )}
+
+            <View style={styles.effortHeader}>
+              <Text style={[ui.label, styles.effortLabel]}>How did the session go?</Text>
+              <Text style={styles.effortValue}>
+                {form.sessionQuality === null
+                  ? '1 = very poor · 10 = excellent'
+                  : `${form.sessionQuality} · ${qualityWord(form.sessionQuality)}`}
+              </Text>
+            </View>
+            <Text style={ui.hint}>How well you played or trained, not how hard it felt.</Text>
+            <View style={styles.rpeRow}>
+              {RPE_VALUES.map((n) => {
+                const selected = form.sessionQuality === n;
+                return (
+                  <Pressable
+                    key={n}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={`Session went ${n} out of 10, ${qualityWord(n)}`}
+                    onPress={() => update('sessionQuality', n)}
+                    style={[styles.rpeButton, selected && ui.selected]}
+                  >
+                    <Text style={[styles.rpeText, selected && ui.selectedText]}>{n}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <FieldError message={errors.sessionQuality} />
+
+            <Field
+              label="Sleep last night (hours, optional)"
+              value={form.sleepHours}
+              onChangeText={(t) => update('sleepHours', t)}
+              error={errors.sleepHours}
+              placeholder="e.g. 7.5"
+              fullWidth
+            />
           </>
         ) : null}
       </Section>
@@ -400,6 +449,14 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
       ) : null}
 
       <Button label="Save Day" variant="onPitch" icon="checkmark" onPress={handleSave} busy={saving} />
+
+      {savedTraining?.sessionType === 'rest_day' ? (
+        <Button label="Tomorrow’s targets" variant="onPitch" icon="flame" onPress={() => openReview(date)} />
+      ) : savedTraining && savedTraining.sessionQuality !== null ? (
+        <Button label="Day review" variant="onPitch" icon="analytics" onPress={() => openReview(date)} />
+      ) : savedTraining ? (
+        <Text style={ui.onPitchText}>Rate how the session went and save to open the day review.</Text>
+      ) : null}
     </>
   );
 }

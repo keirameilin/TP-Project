@@ -9,9 +9,12 @@ export { ValidationError } from '../../lib/validation';
 export const RPE_MIN = 1;
 export const RPE_MAX = 10;
 export const DURATION_MAX_MINUTES = 24 * 60;
+export const QUALITY_MIN = 1;
+export const QUALITY_MAX = 10;
+export const SLEEP_MAX_HOURS = 14;
 
 export type ValidationIssue = BaseValidationIssue<
-  'date' | 'sessionType' | 'durationMinutes' | 'rpe' | 'avgHeartRate' | 'peakHeartRate' | 'caloriesBurned' | 'notes'
+  'date' | 'sessionType' | 'durationMinutes' | 'rpe' | 'avgHeartRate' | 'peakHeartRate' | 'caloriesBurned' | 'sessionQuality' | 'sleepHours' | 'notes'
 >;
 
 export class DuplicateDateError extends Error {
@@ -30,6 +33,8 @@ export interface SessionFields {
   avgHeartRate: number | null;
   peakHeartRate: number | null;
   caloriesBurned: number | null;
+  sessionQuality: number | null;
+  sleepHours: number | null;
   notes: string | null;
 }
 
@@ -73,6 +78,18 @@ export function validateSession(s: SessionFields): ValidationIssue[] {
   }
 
   issues.push(...validateWatchNumbers(s));
+
+  // Optional here so sessions logged before the rating existed can still be edited; the Log tab requires it.
+  if (s.sessionQuality != null) {
+    if (isRestDay) {
+      issues.push({ field: 'sessionQuality', message: 'must be empty on a rest day' });
+    } else if (!Number.isInteger(s.sessionQuality) || s.sessionQuality < QUALITY_MIN || s.sessionQuality > QUALITY_MAX) {
+      issues.push({ field: 'sessionQuality', message: `must be a whole number from ${QUALITY_MIN} to ${QUALITY_MAX}` });
+    }
+  }
+  if (s.sleepHours != null && !(s.sleepHours >= 0 && s.sleepHours <= SLEEP_MAX_HOURS)) {
+    issues.push({ field: 'sleepHours', message: `must be between 0 and ${SLEEP_MAX_HOURS} hours` });
+  }
   return issues;
 }
 

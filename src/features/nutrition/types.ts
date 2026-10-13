@@ -38,6 +38,11 @@ export interface DailyTotals {
   byMeal: Record<MealType, Macros>;
 }
 
+/** One day's summed intake. */
+export interface DailyMacros extends Macros {
+  date: string;
+}
+
 export interface DailyCalories {
   date: string;
   calories: number;

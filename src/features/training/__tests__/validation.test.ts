@@ -13,6 +13,8 @@ const valid: SessionFields = {
   avgHeartRate: null,
   peakHeartRate: null,
   caloriesBurned: null,
+  sessionQuality: null,
+  sleepHours: null,
   notes: null,
 };
 
@@ -136,5 +138,29 @@ describe('validateSession: heart rate and calories from a watch', () => {
       'peakHeartRate',
       'caloriesBurned',
     ]);
+  });
+});
+
+describe('validateSession: session rating and sleep', () => {
+  it('accepts a rating from 1 to 10 and sleep from 0 to 14 hours, or neither', () => {
+    expect(validateSession({ ...valid, sessionQuality: 1, sleepHours: 0 })).toEqual([]);
+    expect(validateSession({ ...valid, sessionQuality: 10, sleepHours: 14 })).toEqual([]);
+    expect(validateSession({ ...valid, sessionQuality: 7, sleepHours: 7.5 })).toEqual([]);
+    // Sessions logged before the rating existed have none.
+    expect(validateSession(valid)).toEqual([]);
+  });
+
+  it('rejects ratings outside 1–10 or not whole, and sleep outside 0–14', () => {
+    for (const quality of [0, 11, 7.5, NaN]) {
+      expect(fieldsWithIssues({ ...valid, sessionQuality: quality })).toEqual(['sessionQuality']);
+    }
+    for (const hours of [-1, 14.5, NaN]) {
+      expect(fieldsWithIssues({ ...valid, sleepHours: hours })).toEqual(['sleepHours']);
+    }
+  });
+
+  it('rejects a session rating on a rest day', () => {
+    const rest: SessionFields = { ...valid, sessionType: 'rest_day', durationMinutes: null, rpe: null };
+    expect(fieldsWithIssues({ ...rest, sessionQuality: 7 })).toEqual(['sessionQuality']);
   });
 });

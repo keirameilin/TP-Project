@@ -14,7 +14,12 @@ import {
 import { createDailyLogRepos, loadDay, loadDayFood, saveDay, type DailyLogRepos } from '../saveDay';
 
 const DATE = '2026-09-30';
-const form = (overrides: Partial<DailyLogForm>): DailyLogForm => ({ ...EMPTY_FORM, ...overrides });
+/** A day form; a training session gets a session rating of 7 unless the test sets one. */
+const form = (overrides: Partial<DailyLogForm>): DailyLogForm => ({
+  ...EMPTY_FORM,
+  ...(overrides.sessionType && overrides.sessionType !== 'rest_day' ? { sessionQuality: 7 } : {}),
+  ...overrides,
+});
 const foodItem = (overrides: Partial<FoodItemForm>): FoodItemForm => ({
   ...emptyFoodItem('lunch'),
   foodName: 'Chicken wrap',
@@ -41,6 +46,8 @@ describe('parseForm', () => {
         avgHeartRate: null,
         peakHeartRate: null,
         caloriesBurned: null,
+        sessionQuality: 7,
+        sleepHours: null,
       },
       weightKg: lbToKg(160.5),
     });
@@ -100,7 +107,16 @@ describe('parseForm', () => {
 
   it('ignores hidden duration and effort on a rest day', () => {
     const { values, errors } = parseForm(
-      form({ sessionType: 'rest_day', duration: 'x', effortInput: 'watch', rpe: 4, avgHeartRate: '150', caloriesBurned: '500' }),
+      form({
+        sessionType: 'rest_day',
+        duration: 'x',
+        effortInput: 'watch',
+        rpe: 4,
+        avgHeartRate: '150',
+        caloriesBurned: '500',
+        sessionQuality: 8,
+        sleepHours: '7',
+      }),
       DATE,
     );
     expect(errors).toEqual({});
@@ -111,6 +127,8 @@ describe('parseForm', () => {
       avgHeartRate: null,
       peakHeartRate: null,
       caloriesBurned: null,
+      sessionQuality: null,
+      sleepHours: null,
     });
   });
 
@@ -119,6 +137,23 @@ describe('parseForm', () => {
     expect(errors.duration).toBe('Duration is required');
     expect(errors.rpe).toBe('Pick an effort rating');
     expect(errors.weight).toBe('Weight must be between 45 and 880 lb');
+  });
+
+  it('requires a session rating for a training session, and keeps sleep optional', () => {
+    const session = { sessionType: 'match', duration: '90', rpe: 8 } as const;
+    expect(parseForm(form({ ...session, sessionQuality: null }), DATE).errors).toEqual({
+      sessionQuality: 'Rate how the session went',
+    });
+    const { values, errors } = parseForm(form({ ...session, sessionQuality: 6, sleepHours: '7,5' }), DATE);
+    expect(errors).toEqual({});
+    expect(values.training).toMatchObject({ rpe: 8, sessionQuality: 6, sleepHours: 7.5 });
+  });
+
+  it('rejects sleep outside 0–14 hours', () => {
+    const session = { sessionType: 'match', duration: '90', rpe: 8 } as const;
+    expect(parseForm(form({ ...session, sleepHours: '15' }), DATE).errors).toEqual({
+      sleepHours: 'Sleep must be between 0 and 14 hours',
+    });
   });
 
   it('flags a non-whole duration', () => {
@@ -178,7 +213,7 @@ describe('saving', () => {
   const addFood = (overrides: Partial<FoodItemForm>) => repos.food.create(parseFoodItem(foodItem(overrides), DATE).entry);
 
   it('writes training and weight and round-trips into the form', async () => {
-    const full = form({ sessionType: 'match', duration: '90', rpe: 8, weight: '160.4' });
+    const full = form({ sessionType: 'match', duration: '90', rpe: 8, sessionQuality: 6, sleepHours: '7.5', weight: '160.4' });
     await save(full);
     expect(formFromRecords(await loadDay(repos, DATE))).toEqual(full);
   });

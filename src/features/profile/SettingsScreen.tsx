@@ -386,8 +386,8 @@ function TargetsView({ result }: { result: TargetsResult }) {
         </Text>
       ))}
       <Text style={ui.hint}>
-        Based on a weight of {kgToDisplayLb(t.weightKg)} lb. These targets aren’t adjusted for match or rest
-        days yet.
+        Based on a weight of {kgToDisplayLb(t.weightKg)} lb. This is your baseline; the Food tab adjusts carbs for
+        each day’s training.
       </Text>
     </View>
   );

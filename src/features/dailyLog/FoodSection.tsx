@@ -68,7 +68,13 @@ interface Editing {
  * Each item is written as soon as it's added or updated, and the totals are summed by the data
  * layer. Tapping an item edits it in place.
  */
-export function FoodSection(props: { repos: DailyLogRepos; date: string; targets: TargetsResult | null }) {
+export function FoodSection(props: {
+  repos: DailyLogRepos;
+  date: string;
+  targets: TargetsResult | null;
+  /** One sentence on how the day's training set the targets. */
+  targetNote?: string | null;
+}) {
   const { repos, date, targets } = props;
   const [food, setFood] = useState<DayFood | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -233,6 +239,7 @@ export function FoodSection(props: { repos: DailyLogRepos; date: string; targets
     <>
       <Section title="Intake" icon="flame">
         <Intake eaten={food.totals.totals} target={targets?.ok ? targets.targets : null} />
+        {props.targetNote ? <Text style={ui.hint}>{props.targetNote}</Text> : null}
         {targets && !targets.ok ? (
           <Button
             label="Set up your daily targets"

@@ -250,3 +250,141 @@ export const SESSION_MET_RULE = {
   technical_tactical: 'technicalMet',
   rest_day: 'restMet',
 } as const satisfies Record<SessionType, EffortRuleName>;
+
+/**
+ * Every constant behind a day's adjusted targets (src/features/targets/adjust.ts): carbohydrate in
+ * g per kg of body weight by the kind of day, with protein and fat left at the baseline.
+ *
+ * The UEFA statement gives one range, 6–8 g/kg, for the day before a match, match day and the day
+ * after, and "3 to 6 g/kg" for "typical training days" (p. 420). It gives nothing for rest days and
+ * does not separate conditioning, gym and technical sessions, so those are `estimate`. Where a rule
+ * holds a range from the paper, `target` is the point we use within it.
+ */
+export const ADJUSTMENT_RULES = {
+  // UEFA statement p. 419 (PDF p. 4), "Pre-match": "Within an overall guideline of 6–8 g/kg BM CHO
+  // per day". The midpoint is the point we use.
+  matchDayCarbsGPerKg: {
+    value: { min: 6, max: 8, target: 7 },
+    sourceType: 'sourced',
+    reference: 'UEFA statement p. 419',
+  },
+
+  // UEFA statement p. 418 (PDF p. 3): "On the day prior to a match (MD-1), training is usually
+  // light and CHO intake should be at least 6–8 g/kg body mass (BM) to elevate muscle and liver
+  // glycogen stores." The midpoint is the point we use.
+  dayBeforeMatchCarbsGPerKg: {
+    value: { min: 6, max: 8, target: 7 },
+    sourceType: 'sourced',
+    reference: 'UEFA statement p. 418',
+  },
+
+  // UEFA statement p. 420 (PDF p. 5): "daily CHO intake in the range of 6–8 g/kg BM in the 24 hours
+  // following a game (MD +1) will continue to replenish glycogen stores". The bottom of the range
+  // is the point we use, so a match today or tomorrow outranks a match yesterday.
+  dayAfterMatchCarbsGPerKg: {
+    value: { min: 6, max: 8, target: 6 },
+    sourceType: 'sourced',
+    reference: 'UEFA statement p. 420',
+  },
+
+  // DESIGN DECISION. Protein on the day after a match goes to the top of the 1.6–2.2 g/kg range the
+  // UEFA statement gives for training (p. 421); the paper does not tie that upper end to the day
+  // after a match. Players under the junior age limit stay on the junior rule.
+  dayAfterMatchProteinGPerKg: {
+    value: 2.2,
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // DESIGN DECISION. What counts as matches close together: this many matches inside a window of
+  // this many days. The UEFA statement speaks of "congested fixtures" with "48–72 hours between
+  // games" (p. 418) but sets no such count.
+  congestedMatches: {
+    value: { minMatches: 2, windowDays: 4 },
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // DESIGN DECISION. During matches close together, carbs go to the top of the 6–8 g/kg range the
+  // UEFA statement gives for congested fixtures (p. 418); picking the top is ours.
+  congestedCarbsGPerKg: {
+    value: 8,
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // DESIGN DECISION. A conditioning or gym day sits near the top of the "3 to 6 g/kg" the UEFA
+  // statement gives for typical training days (p. 420); the paper does not split training by type.
+  conditioningOrGymCarbsGPerKg: {
+    value: 5,
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // DESIGN DECISION. A technical day sits lower in the same 3–6 g/kg training-day range.
+  technicalCarbsGPerKg: {
+    value: 4,
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // DESIGN DECISION. The UEFA statement gives no rest-day figure; this is the bottom of its
+  // training-day range.
+  restCarbsGPerKg: {
+    value: 3,
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // UEFA statement p. 419 (PDF p. 4), "Recovery from match play": "Postmatch meals and snacks
+  // should target a CHO intake of ~1 g/kg BM/hour for 4 hours."
+  recoveryCarbs: {
+    value: { gPerKgPerHour: 1, hours: 4 },
+    sourceType: 'sourced',
+    reference: 'UEFA statement p. 419',
+  },
+
+  // UEFA statement p. 420 (PDF p. 5): "meals and snacks should be scheduled to achieve intakes of
+  // 20–25 g of (high-quality) protein at 3–4 hour intervals."
+  recoveryProtein: {
+    value: { minG: 20, maxG: 25, minHours: 3, maxHours: 4 },
+    sourceType: 'sourced',
+    reference: 'UEFA statement p. 420',
+  },
+} as const satisfies Record<string, Rule<unknown>>;
+
+export type AdjustmentRuleName = keyof typeof ADJUSTMENT_RULES;
+
+/**
+ * Every cutoff the Day Review uses to decide what to say (src/features/review). All are our own
+ * choices, so all are `estimate`, and the screen says so.
+ */
+export const REVIEW_RULES = {
+  // DESIGN DECISION. A session rated this or higher went well; this or lower went badly. In
+  // between is neither.
+  goodSessionMin: { value: 7, sourceType: 'estimate', reference: null },
+  badSessionMax: { value: 4, sourceType: 'estimate', reference: null },
+
+  // DESIGN DECISION. Intake more than this fraction under a day's target is flagged as a shortfall.
+  shortfallFraction: { value: 0.25, sourceType: 'estimate', reference: null },
+
+  // DESIGN DECISION. Intake at or above this fraction of a day's target counts as lining up with it.
+  metTargetFraction: { value: 0.9, sourceType: 'estimate', reference: null },
+
+  // DESIGN DECISION. Sleep under this many hours is listed as another possible factor.
+  lowSleepHours: { value: 6, sourceType: 'estimate', reference: null },
+
+  // DESIGN DECISION. The personal pattern compares sessions after days at or above `highFraction`
+  // of the carb target with sessions after days below `lowFraction`. It is shown only with at
+  // least `minSessions` usable sessions and `minPerGroup` in each group.
+  carbPattern: {
+    value: { highFraction: 0.9, lowFraction: 0.7, minSessions: 8, minPerGroup: 2 },
+    sourceType: 'estimate',
+    reference: null,
+  },
+
+  // DESIGN DECISION. The review lists at most this many findings.
+  maxFindings: { value: 3, sourceType: 'estimate', reference: null },
+} as const satisfies Record<string, Rule<unknown>>;
+
+export type ReviewRuleName = keyof typeof REVIEW_RULES;

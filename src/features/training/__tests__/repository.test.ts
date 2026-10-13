@@ -49,6 +49,15 @@ describe('create', () => {
     expect(patched).toMatchObject({ avgHeartRate: null, peakHeartRate: 192, caloriesBurned: 800 });
   });
 
+  it('stores how the session went and the sleep before it, empty when not given', async () => {
+    const s = await repo.create({ sessionType: 'match', durationMinutes: 90, rpe: 8, sessionQuality: 6, sleepHours: 7.5 });
+    expect(s).toMatchObject({ sessionQuality: 6, sleepHours: 7.5 });
+    expect(await repo.update(s.id, { sleepHours: null })).toMatchObject({ sessionQuality: 6, sleepHours: null });
+
+    const older = await repo.create({ date: '2026-09-20', sessionType: 'match', durationMinutes: 90, rpe: 8 });
+    expect(older).toMatchObject({ sessionQuality: null, sleepHours: null });
+  });
+
   it('stores a session with watch numbers and no rating', async () => {
     const s = await repo.create({ sessionType: 'match', durationMinutes: 90, avgHeartRate: 158 });
     expect(s).toMatchObject({ rpe: null, avgHeartRate: 158 });

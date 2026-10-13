@@ -3,6 +3,7 @@ import type { SqlDatabase } from '../../db/types';
 import {
   MEAL_TYPES,
   type DailyCalories,
+  type DailyMacros,
   type DailyTotals,
   type FoodEntry,
   type FoodEntryPatch,
@@ -184,6 +185,27 @@ export class FoodEntryRepository {
       [range.from, range.to],
     );
     return rows.map((r) => ({ date: r.date, calories: round1(r.calories) }));
+  }
+
+  /**
+   * Total calories and macros per day over an inclusive date range, oldest first.
+   * Only days with at least one entry are returned — an unlogged day is unknown, not zero.
+   */
+  async getDailyMacros(range: { from?: string; to?: string } = {}): Promise<DailyMacros[]> {
+    const rows = await this.db.getAllAsync<{ date: string; calories: number; protein: number; carbs: number; fat: number }>(
+      `SELECT date, SUM(calories) AS calories, SUM(protein_g) AS protein, SUM(carbs_g) AS carbs, SUM(fat_g) AS fat
+       FROM food_entries
+       WHERE (? IS NULL OR date >= ?) AND (? IS NULL OR date <= ?)
+       GROUP BY date ORDER BY date`,
+      [range.from ?? null, range.from ?? null, range.to ?? null, range.to ?? null],
+    );
+    return rows.map((r) => ({
+      date: r.date,
+      calories: round1(r.calories),
+      proteinG: round1(r.protein),
+      carbsG: round1(r.carbs),
+      fatG: round1(r.fat),
+    }));
   }
 
   /**

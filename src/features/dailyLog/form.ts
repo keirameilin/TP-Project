@@ -22,6 +22,10 @@ export interface DailyLogForm {
   avgHeartRate: string;
   peakHeartRate: string;
   caloriesBurned: string;
+  /** How the session went, 1–10. Separate from effort (how hard it was). */
+  sessionQuality: number | null;
+  /** Hours slept the night before; optional. */
+  sleepHours: string;
   /** In pounds, as typed; stored in kg. */
   weight: string;
 }
@@ -48,6 +52,8 @@ export interface TrainingValues {
   avgHeartRate: number | null;
   peakHeartRate: number | null;
   caloriesBurned: number | null;
+  sessionQuality: number | null;
+  sleepHours: number | null;
 }
 
 /** Parsed day form: null means the section was left empty and should not be stored. */
@@ -64,6 +70,8 @@ export const EMPTY_FORM: DailyLogForm = {
   avgHeartRate: '',
   peakHeartRate: '',
   caloriesBurned: '',
+  sessionQuality: null,
+  sleepHours: '',
   weight: '',
 };
 
@@ -111,6 +119,8 @@ const FIELD_LABELS: Record<string, string> = {
   avgHeartRate: 'Average heart rate',
   peakHeartRate: 'Max heart rate',
   caloriesBurned: 'Calories burned',
+  sessionQuality: 'Session rating',
+  sleepHours: 'Sleep',
   weight: 'Weight',
   mealType: 'Meal',
   foodName: 'Food name',
@@ -128,6 +138,8 @@ const DATA_FIELD_TO_FORM: Record<string, string> = {
   avgHeartRate: 'avgHeartRate',
   peakHeartRate: 'peakHeartRate',
   caloriesBurned: 'caloriesBurned',
+  sessionQuality: 'sessionQuality',
+  sleepHours: 'sleepHours',
   weightKg: 'weight',
   mealType: 'mealType',
   foodName: 'foodName',
@@ -180,6 +192,9 @@ export function parseForm(form: DailyLogForm, date: string): { values: DailyLogV
       avgHeartRate: fromWatch ? parseNumber(form.avgHeartRate) : null,
       peakHeartRate: fromWatch ? parseNumber(form.peakHeartRate) : null,
       caloriesBurned: fromWatch ? parseNumber(form.caloriesBurned) : null,
+      // A rest day has no session to rate, and gets no review that sleep could explain.
+      sessionQuality: isRest ? null : form.sessionQuality,
+      sleepHours: isRest ? null : parseNumber(form.sleepHours),
     };
     // The validator says "is required unless rest_day"; the form hides those inputs on rest days anyway.
     if (training.durationMinutes === null && !isRest) errors.duration = 'Duration is required';
@@ -191,6 +206,7 @@ export function parseForm(form: DailyLogForm, date: string): { values: DailyLogV
     } else if (training.rpe === null && !isRest) {
       errors.rpe = 'Pick an effort rating';
     }
+    if (training.sessionQuality === null && !isRest) errors.sessionQuality = 'Rate how the session went';
     issues.push(
       ...validateSession({ date, notes: null, ...training }).filter(
         // In watch mode the missing-effort problem is reported on the watch fields above.
@@ -256,6 +272,8 @@ export function formFromRecords(records: {
     avgHeartRate: numberText(training?.avgHeartRate),
     peakHeartRate: numberText(training?.peakHeartRate),
     caloriesBurned: numberText(training?.caloriesBurned),
+    sessionQuality: training?.sessionQuality ?? null,
+    sleepHours: numberText(training?.sleepHours),
     weight: weight ? String(kgToDisplayLb(weight.weightKg)) : '',
   };
 }

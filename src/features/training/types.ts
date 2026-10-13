@@ -26,6 +26,13 @@ export interface TrainingSession {
   peakHeartRate: number | null;
   /** Total calories burned in the session (kcal), as the player's watch reported it. Null if not given. */
   caloriesBurned: number | null;
+  /**
+   * How the session went, 1–10: the player's own view of their performance. Not the same as
+   * effort (`rpe`), which is how hard it was. Null for rest days and sessions logged before this existed.
+   */
+  sessionQuality: number | null;
+  /** Hours slept the night before. Null if not given. */
+  sleepHours: number | null;
   notes: string | null;
   /** ISO-8601 UTC timestamps. */
   createdAt: string;
@@ -41,6 +48,8 @@ export interface NewTrainingSession {
   avgHeartRate?: number | null;
   peakHeartRate?: number | null;
   caloriesBurned?: number | null;
+  sessionQuality?: number | null;
+  sleepHours?: number | null;
   notes?: string | null;
 }
 

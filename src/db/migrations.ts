@@ -146,6 +146,14 @@ const MIGRATIONS: string[] = [
   DROP TABLE training_sessions;
   ALTER TABLE training_sessions_new RENAME TO training_sessions;
   `,
+  // v11: how the session went (separate from how hard it was) and last night's sleep. Both are
+  // nullable so sessions logged before this keep working; the Log tab asks for the rating.
+  `
+  ALTER TABLE training_sessions ADD COLUMN session_quality INTEGER
+    CHECK (session_quality IS NULL OR session_quality BETWEEN 1 AND 10);
+  ALTER TABLE training_sessions ADD COLUMN sleep_hours REAL
+    CHECK (sleep_hours IS NULL OR sleep_hours BETWEEN 0 AND 14);
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
