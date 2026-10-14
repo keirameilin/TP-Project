@@ -14,7 +14,7 @@ import {
 } from '../intensity/sessionText';
 import { describePlan, type PlannedSession } from '../planning';
 import { weightForDate } from '../targets';
-import { RPE_MAX, RPE_MIN, SESSION_OPTIONS, type TrainingSession } from '../training';
+import { SESSION_OPTIONS, type TrainingSession } from '../training';
 import { DateNav } from './DateNav';
 import {
   EMPTY_FORM,
@@ -30,23 +30,28 @@ import { useSelectedDate } from './SelectedDate';
 import { useDailyLogRepos } from './useDailyLogRepos';
 import {
   ACCENT,
-  ACCENT_TINT,
+  ACCENT_DEEP,
+  BORDER,
   Button,
+  CARD,
+  CARD_BORDER,
   Chip,
   ERROR,
   Field,
   FieldError,
   INK,
   INK_SOFT,
-  MUTED,
+  ON_ACCENT,
   ON_PITCH,
+  PaperCard,
+  PAPER_INK,
+  Pill,
+  ScaleRow,
   Screen,
   Section,
   SURFACE_ALT,
   styles as ui,
 } from './ui';
-
-const RPE_VALUES = Array.from({ length: RPE_MAX - RPE_MIN + 1 }, (_, i) => RPE_MIN + i);
 
 /** A word for each effort rating, shown next to the number the player picked. */
 function effortWord(rpe: number): string {
@@ -252,27 +257,20 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
 
   return (
     <>
-      <Section title="Training" icon="football">
+      <Section title="Training" right={plan ? <Pill label="Planned" /> : null}>
         {plan ? (
-          <View style={styles.planBox}>
-            <Ionicons name="calendar" size={20} color={ACCENT} />
-            <View style={styles.planBoxText}>
-              <Text style={styles.planLabel}>Planned</Text>
+          <PaperCard>
+            <View>
               <Text style={styles.planValue}>{describePlan(plan)}</Text>
-              {plan.notes ? <Text style={ui.hint}>{plan.notes}</Text> : null}
+              {plan.notes ? <Text style={styles.planNotes}>{plan.notes}</Text> : null}
             </View>
             {form.sessionType !== plan.sessionType ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={logAsPlanned}
-                style={({ pressed }) => [styles.planButton, pressed && ui.dimmed]}
-              >
-                <Text style={styles.planButtonText}>Log as planned</Text>
-              </Pressable>
+              <Button label="Log as planned" variant="onPaper" onPress={logAsPlanned} style={styles.planButton} />
             ) : null}
-          </View>
+          </PaperCard>
         ) : null}
 
+        <Text style={styles.groupLabel}>Session type</Text>
         <View style={styles.tiles}>
           {SESSION_OPTIONS.map((o) => {
             const selected = form.sessionType === o.type;
@@ -285,10 +283,14 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
                 accessibilityState={{ selected }}
                 // Tapping the selected type again clears the section.
                 onPress={() => update('sessionType', selected ? null : o.type)}
-                style={({ pressed }) => [styles.tile, selected && styles.tileSelected, pressed && ui.dimmed]}
+                style={({ pressed }) => [styles.tile, pressed && ui.dimmed]}
               >
-                <Ionicons name={o.icon} size={22} color={selected ? '#fff' : ACCENT} />
-                <Text style={[styles.tileText, selected && styles.tileTextSelected]}>{o.label}</Text>
+                <View style={[styles.tileIcon, selected && styles.tileIconSelected]}>
+                  <Ionicons name={o.icon} size={24} color={selected ? ON_ACCENT : INK} />
+                </View>
+                <Text style={[styles.tileText, selected && styles.tileTextSelected]} numberOfLines={1}>
+                  {o.label}
+                </Text>
               </Pressable>
             );
           })}
@@ -307,7 +309,8 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
               placeholder="e.g. 90"
               fullWidth
             />
-            <Text style={[ui.label, styles.effortLabel]}>How hard was it? (effort)</Text>
+
+            <Text style={styles.groupLabel}>How hard was it? (effort)</Text>
             <View style={styles.effortChoice}>
               <Chip
                 label="Rate it myself"
@@ -323,29 +326,16 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
 
             {form.effortInput === 'rating' ? (
               <>
-                <View style={styles.effortHeader}>
-                  <Text style={[ui.label, styles.effortLabel]}>Effort</Text>
-                  <Text style={styles.effortValue}>
-                    {form.rpe === null ? '1 = very easy · 10 = max' : `${form.rpe} · ${effortWord(form.rpe)}`}
-                  </Text>
-                </View>
-                <View style={styles.rpeRow}>
-                  {RPE_VALUES.map((n) => {
-                    const selected = form.rpe === n;
-                    return (
-                      <Pressable
-                        key={n}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                        accessibilityLabel={`Effort ${n}, ${effortWord(n)}`}
-                        onPress={() => update('rpe', n)}
-                        style={[styles.rpeButton, selected && ui.selected]}
-                      >
-                        <Text style={[styles.rpeText, selected && ui.selectedText]}>{n}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                <ScaleRow
+                  value={form.rpe}
+                  onChange={(n) => update('rpe', n)}
+                  lowLabel="Very easy"
+                  highLabel="Max effort"
+                  describe={(n) => `Effort ${n}, ${effortWord(n)}`}
+                />
+                {form.rpe !== null ? (
+                  <Text style={styles.scaleChoice}>{`${form.rpe} · ${effortWord(form.rpe)}`}</Text>
+                ) : null}
                 <FieldError message={errors.rpe} />
               </>
             ) : (
@@ -384,32 +374,18 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
               </>
             )}
 
-            <View style={styles.effortHeader}>
-              <Text style={[ui.label, styles.effortLabel]}>How did the session go?</Text>
-              <Text style={styles.effortValue}>
-                {form.sessionQuality === null
-                  ? '1 = very poor · 10 = excellent'
-                  : `${form.sessionQuality} · ${qualityWord(form.sessionQuality)}`}
-              </Text>
-            </View>
+            <Text style={styles.groupLabel}>How did the session go?</Text>
             <Text style={ui.hint}>How well you played or trained, not how hard it felt.</Text>
-            <View style={styles.rpeRow}>
-              {RPE_VALUES.map((n) => {
-                const selected = form.sessionQuality === n;
-                return (
-                  <Pressable
-                    key={n}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={`Session went ${n} out of 10, ${qualityWord(n)}`}
-                    onPress={() => update('sessionQuality', n)}
-                    style={[styles.rpeButton, selected && ui.selected]}
-                  >
-                    <Text style={[styles.rpeText, selected && ui.selectedText]}>{n}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <ScaleRow
+              value={form.sessionQuality}
+              onChange={(n) => update('sessionQuality', n)}
+              lowLabel="Very poor"
+              highLabel="Excellent"
+              describe={(n) => `Session went ${n} out of 10, ${qualityWord(n)}`}
+            />
+            {form.sessionQuality !== null ? (
+              <Text style={styles.scaleChoice}>{`${form.sessionQuality} · ${qualityWord(form.sessionQuality)}`}</Text>
+            ) : null}
             <FieldError message={errors.sessionQuality} />
 
             <Field
@@ -426,7 +402,7 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
 
       {savedTraining ? <SessionSummary session={savedTraining} player={player} /> : null}
 
-      <Section title="Body weight" subtitle="Optional" icon="scale-outline">
+      <Section title="Body weight" subtitle="Optional">
         <Field
           label="Weight (lb)"
           value={form.weight}
@@ -448,12 +424,12 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
         </View>
       ) : null}
 
-      <Button label="Save Day" variant="onPitch" icon="checkmark" onPress={handleSave} busy={saving} />
+      <Button label="Save Day" onPress={handleSave} busy={saving} />
 
       {savedTraining?.sessionType === 'rest_day' ? (
-        <Button label="Tomorrow’s targets" variant="onPitch" icon="flame" onPress={() => openReview(date)} />
+        <Button label="Tomorrow’s targets" variant="secondary" icon="flame" onPress={() => openReview(date)} />
       ) : savedTraining && savedTraining.sessionQuality !== null ? (
-        <Button label="Day review" variant="onPitch" icon="analytics" onPress={() => openReview(date)} />
+        <Button label="Day review" variant="secondary" icon="analytics" onPress={() => openReview(date)} />
       ) : savedTraining ? (
         <Text style={ui.onPitchText}>Rate how the session went and save to open the day review.</Text>
       ) : null}
@@ -468,7 +444,7 @@ function DayForm({ repos, date }: { repos: DailyLogRepos; date: string }) {
 function SessionSummary({ session, player }: { session: TrainingSession; player: PlayerInput }) {
   if (session.sessionType === 'rest_day') {
     return (
-      <Section title="Session summary" icon="pulse">
+      <Section title="Session summary">
         <Text style={ui.hint}>Rest day: no effort level and no training calories.</Text>
       </Section>
     );
@@ -477,7 +453,7 @@ function SessionSummary({ session, player }: { session: TrainingSession; player:
   const effort = sessionEffort(session, player);
   const calories = sessionCalories(session, player);
   return (
-    <Section title="Session summary" icon="pulse" subtitle="Updates when you save">
+    <Section title="Session summary" subtitle="Updates when you save">
       <SummaryRow
         label="Effort level"
         value={effort.effort ? `${effort.effort.level} / 10` : '—'}
@@ -503,7 +479,7 @@ function SummaryRow(props: { label: string; value: string; source: string | null
     >
       <View style={styles.summaryHeader}>
         <Text style={ui.label}>{props.label}</Text>
-        {props.source ? <Text style={styles.sourceTag}>{props.source}</Text> : null}
+        {props.source ? <Pill label={props.source} /> : null}
       </View>
       <Text style={styles.summaryValue}>{props.value}</Text>
       {props.lines.map((line) => (
@@ -517,67 +493,40 @@ function SummaryRow(props: { label: string; value: string; source: string | null
 
 const styles = StyleSheet.create({
   loading: { marginTop: 24 },
+  groupLabel: { fontSize: 14, fontWeight: '700', color: INK, marginTop: 6 },
+  planValue: { fontSize: 15, fontWeight: '700', color: PAPER_INK },
+  planNotes: { fontSize: 13, color: ACCENT_DEEP, marginTop: 2 },
+  planButton: { minHeight: 38 },
+  // All five on one row: an icon square with its name underneath.
+  tiles: { flexDirection: 'row', justifyContent: 'space-between', gap: 6 },
+  tile: { flex: 1, alignItems: 'center', gap: 4 },
+  tileIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: SURFACE_ALT,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  tileIconSelected: { backgroundColor: ACCENT, borderColor: ACCENT },
+  tileText: { fontSize: 11, fontWeight: '500', color: INK_SOFT },
+  tileTextSelected: { color: ACCENT, fontWeight: '700' },
   effortChoice: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  scaleChoice: { fontSize: 13, fontWeight: '600', color: ACCENT },
   summaryRow: { gap: 4 },
   summaryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   summaryValue: { fontSize: 24, fontWeight: '700', color: INK },
-  sourceTag: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: ACCENT,
-    backgroundColor: ACCENT_TINT,
-    borderRadius: 8,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    overflow: 'hidden',
-  },
-  planBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: ACCENT_TINT,
-    borderRadius: 14,
-    padding: 12,
-  },
-  planBoxText: { flex: 1, gap: 1 },
-  planLabel: { fontSize: 12, fontWeight: '600', color: MUTED },
-  planValue: { fontSize: 16, fontWeight: '700', color: ACCENT },
-  planButton: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#fff' },
-  planButtonText: { color: ACCENT, fontSize: 14, fontWeight: '700' },
-  tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  // Three to a row; the last row's two tiles stretch to fill it.
-  tile: {
-    flexGrow: 1,
-    flexBasis: '30%',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 14,
-    borderRadius: 14,
-    backgroundColor: SURFACE_ALT,
-  },
-  tileSelected: { backgroundColor: ACCENT },
-  tileText: { fontSize: 14, fontWeight: '600', color: INK_SOFT },
-  tileTextSelected: { color: '#fff' },
-  effortHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  effortLabel: { marginBottom: 6 },
-  effortValue: { fontSize: 13, fontWeight: '600', color: MUTED },
-  rpeRow: { flexDirection: 'row', gap: 4 },
-  rpeButton: {
-    flex: 1,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10,
-    backgroundColor: SURFACE_ALT,
-  },
-  rpeText: { fontSize: 15, fontWeight: '600', color: INK_SOFT },
   statusBox: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#fff',
-    borderRadius: 14,
+    backgroundColor: CARD,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
   },

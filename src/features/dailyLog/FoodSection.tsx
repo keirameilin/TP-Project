@@ -21,9 +21,9 @@ import {
 import { loadDayFood, type DailyLogRepos, type DayFood } from './saveDay';
 import {
   ACCENT,
-  ACCENT_TINT,
   BORDER,
   Button,
+  CARD_BORDER,
   Chip,
   Dropdown,
   FAINT,
@@ -32,14 +32,24 @@ import {
   INK,
   INK_SOFT,
   MACRO_COLORS,
+  MacroTile,
   MUTED,
   ON_PITCH,
+  PAPER,
+  PAPER_INK,
   ProgressBar,
   Section,
   SURFACE_ALT,
   styles as ui,
   type IconName,
 } from './ui';
+
+const MEAL_ICONS: Record<MealType, IconName> = {
+  breakfast: 'cafe',
+  lunch: 'fast-food',
+  dinner: 'restaurant',
+  snack: 'nutrition',
+};
 
 const MEAL_LABELS: Record<MealType, string> = {
   breakfast: 'Breakfast',
@@ -49,7 +59,7 @@ const MEAL_LABELS: Record<MealType, string> = {
 };
 
 /** Shown when the day's calories pass the target. */
-const OVER_TARGET = '#d97706';
+const OVER_TARGET = '#fbbf24';
 
 const whole = (n: number) => Math.round(n).toLocaleString();
 const kcal = (n: number) => `${whole(n)} kcal`;
@@ -237,9 +247,14 @@ export function FoodSection(props: {
 
   return (
     <>
-      <Section title="Intake" icon="flame">
+      <View style={ui.section}>
         <Intake eaten={food.totals.totals} target={targets?.ok ? targets.targets : null} />
-        {props.targetNote ? <Text style={ui.hint}>{props.targetNote}</Text> : null}
+        {props.targetNote ? (
+          <View style={styles.targetNote}>
+            <Ionicons name="flash" size={14} color={ACCENT} />
+            <Text style={[ui.hint, styles.targetNoteText]}>{props.targetNote}</Text>
+          </View>
+        ) : null}
         {targets && !targets.ok ? (
           <Button
             label="Set up your daily targets"
@@ -263,12 +278,21 @@ export function FoodSection(props: {
         {food.logStatus === 'incomplete' ? (
           <Text style={ui.hint}>This day is left out of your maintenance estimate.</Text>
         ) : null}
-      </Section>
+      </View>
 
       <Section
         title="Meals"
-        icon="restaurant"
-        subtitle={food.entries.length > 0 ? 'Tap an item to edit' : undefined}
+        right={
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add food"
+            onPress={openManualForm}
+            hitSlop={8}
+            style={({ pressed }) => pressed && ui.dimmed}
+          >
+            <Text style={styles.addLink}>+ Add food</Text>
+          </Pressable>
+        }
       >
         {food.entries.length === 0 ? (
           <View style={styles.empty}>
@@ -282,8 +306,16 @@ export function FoodSection(props: {
             return (
               <View key={meal} style={styles.meal}>
                 <View style={styles.mealHeader}>
-                  <Text style={styles.mealTitle}>{MEAL_LABELS[meal]}</Text>
-                  <Text style={styles.mealKcal}>{kcal(food.totals.byMeal[meal].calories)}</Text>
+                  <View style={styles.mealIcon}>
+                    <Ionicons name={MEAL_ICONS[meal]} size={22} color={ACCENT} />
+                  </View>
+                  <View style={styles.mealHeaderText}>
+                    <View style={styles.mealTitleRow}>
+                      <Text style={styles.mealTitle}>{MEAL_LABELS[meal]}</Text>
+                      <Text style={styles.mealKcal}>{kcal(food.totals.byMeal[meal].calories)}</Text>
+                    </View>
+                    <MacroLine macros={food.totals.byMeal[meal]} />
+                  </View>
                 </View>
                 {entries.map((entry) =>
                   editing?.id === entry.id ? (
@@ -308,7 +340,7 @@ export function FoodSection(props: {
                       >
                         <Text style={styles.entryName}>{entry.foodName}</Text>
                         <Text style={styles.entryMacros}>
-                          {kcal(entry.calories)} · {macroLine(entry)}
+                          {kcal(entry.calories)} · {macroLine(entry)} · tap to edit
                         </Text>
                       </Pressable>
                       <Pressable
@@ -318,7 +350,7 @@ export function FoodSection(props: {
                         hitSlop={8}
                         style={({ pressed }) => [styles.remove, pressed && ui.dimmed]}
                       >
-                        <Ionicons name="close" size={16} color={MUTED} />
+                        <Ionicons name="close" size={14} color={MUTED} />
                       </Pressable>
                     </View>
                   ),
@@ -329,17 +361,19 @@ export function FoodSection(props: {
         )}
       </Section>
 
-      <Section title="Add food" icon="add-circle" subtitle="Saves as you add">
+      <Section title="Add food" subtitle="Saves as you add">
         <View style={styles.photoRow}>
           <PhotoTile
-            icon="camera"
+            icon="camera-outline"
             label="Take photo"
+            caption="Scan your food"
             onPress={() => handleScan('camera')}
             disabled={scanning || busy}
           />
           <PhotoTile
-            icon="images"
+            icon="image-outline"
             label="Choose photo"
+            caption="From your gallery"
             onPress={() => handleScan('library')}
             disabled={scanning || busy}
           />
@@ -367,8 +401,7 @@ export function FoodSection(props: {
             <FieldError message={errors.form} />
             <Button
               label="Add manually"
-              variant="quiet"
-              icon="create-outline"
+              variant="secondary"
               onPress={openManualForm}
               disabled={scanning || busy}
             />
@@ -379,10 +412,11 @@ export function FoodSection(props: {
   );
 }
 
-/** Calories with a progress bar, then protein, carbs and fat side by side; bars appear once targets exist. */
+/** Calories with a progress bar, then protein, carbs and fat as coloured tiles; bars appear once targets exist. */
 function Intake({ eaten, target }: { eaten: Macros; target: BaselineTargets | null }) {
   const remaining = target ? target.calories - Math.round(eaten.calories) : null;
   const over = remaining !== null && remaining < 0;
+  const amount = (ate: number, goal?: number) => (goal ? `${Math.round(ate)} / ${goal}g` : `${Math.round(ate)} g`);
   return (
     <View style={styles.intake}>
       <View style={styles.caloriesRow}>
@@ -405,46 +439,59 @@ function Intake({ eaten, target }: { eaten: Macros; target: BaselineTargets | nu
         </>
       ) : null}
       <View style={styles.macros}>
-        <MacroStat label="Protein" color={MACRO_COLORS.protein} eaten={eaten.proteinG} target={target?.proteinG} />
-        <MacroStat label="Carbs" color={MACRO_COLORS.carbs} eaten={eaten.carbsG} target={target?.carbsG} />
-        <MacroStat label="Fat" color={MACRO_COLORS.fat} eaten={eaten.fatG} target={target?.fatG} />
+        <MacroTile
+          macro="protein"
+          label="Protein"
+          value={amount(eaten.proteinG, target?.proteinG)}
+          progress={target ? eaten.proteinG / target.proteinG : undefined}
+        />
+        <MacroTile
+          macro="carbs"
+          label="Carbs"
+          value={amount(eaten.carbsG, target?.carbsG)}
+          progress={target ? eaten.carbsG / target.carbsG : undefined}
+        />
+        <MacroTile
+          macro="fat"
+          label="Fat"
+          value={amount(eaten.fatG, target?.fatG)}
+          progress={target ? eaten.fatG / target.fatG : undefined}
+        />
       </View>
     </View>
   );
 }
 
-function MacroStat(props: { label: string; color: string; eaten: number; target?: number }) {
-  const { eaten, target } = props;
+/** "P 28g  C 32g  F 8g" with each letter in its macro's colour. */
+function MacroLine({ macros }: { macros: { proteinG: number; carbsG: number; fatG: number } }) {
+  const part = (letter: string, color: string, value: number) => (
+    <Text style={styles.macroPart}>
+      <Text style={{ color, fontWeight: '700' }}>{letter}</Text>
+      {` ${grams(value)}`}
+    </Text>
+  );
   return (
-    <View
-      style={styles.macro}
-      accessible
-      accessibilityLabel={`${props.label}: ${Math.round(eaten)} grams${target ? ` of ${target}` : ''}`}
-    >
-      <View style={styles.macroLabelRow}>
-        <View style={[styles.macroDot, { backgroundColor: props.color }]} />
-        <Text style={styles.macroLabel}>{props.label}</Text>
-      </View>
-      <Text style={styles.macroValue}>
-        {Math.round(eaten)}
-        <Text style={styles.macroTarget}>{target ? ` / ${target} g` : ' g'}</Text>
-      </Text>
-      {target ? <ProgressBar progress={eaten / target} color={props.color} height={6} /> : null}
+    <View style={styles.macroLine} accessible accessibilityLabel={macroLine(macros)}>
+      {part('P', MACRO_COLORS.protein, macros.proteinG)}
+      {part('C', MACRO_COLORS.carbs, macros.carbsG)}
+      {part('F', MACRO_COLORS.fat, macros.fatG)}
     </View>
   );
 }
 
-function PhotoTile(props: { icon: IconName; label: string; onPress: () => void; disabled: boolean }) {
+function PhotoTile(props: { icon: IconName; label: string; caption: string; onPress: () => void; disabled: boolean }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={props.label}
+      accessibilityHint={props.caption}
       onPress={props.onPress}
       disabled={props.disabled}
       style={({ pressed }) => [styles.photoTile, (pressed || props.disabled) && ui.dimmed]}
     >
-      <Ionicons name={props.icon} size={26} color={ACCENT} />
+      <Ionicons name={props.icon} size={30} color={ACCENT} />
       <Text style={styles.photoTileText}>{props.label}</Text>
+      <Text style={styles.photoTileCaption}>{props.caption}</Text>
     </Pressable>
   );
 }
@@ -511,65 +558,81 @@ const styles = StyleSheet.create({
   intake: { gap: 8 },
   caloriesRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
   caloriesValue: { fontSize: 40, fontWeight: '800', letterSpacing: -1, color: INK },
-  caloriesUnit: { fontSize: 15, fontWeight: '600', color: MUTED },
-  remaining: { fontSize: 14, fontWeight: '600', color: ACCENT },
-  macros: { flexDirection: 'row', gap: 10, marginTop: 6 },
-  macro: { flex: 1, gap: 6, backgroundColor: SURFACE_ALT, borderRadius: 14, padding: 12 },
-  macroLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  macroDot: { width: 8, height: 8, borderRadius: 4 },
-  macroLabel: { fontSize: 13, fontWeight: '600', color: INK_SOFT },
-  macroValue: { fontSize: 18, fontWeight: '800', color: INK },
-  macroTarget: { fontSize: 12, fontWeight: '500', color: MUTED },
+  caloriesUnit: { fontSize: 15, fontWeight: '600', color: INK_SOFT },
+  remaining: { fontSize: 14, fontWeight: '600', color: INK },
+  macros: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  targetNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+  targetNoteText: { flex: 1 },
   logStatus: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 6,
-    paddingTop: 14,
+    marginTop: 4,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: BORDER,
   },
   logStatusLabel: { fontSize: 14, fontWeight: '500', color: INK_SOFT },
   logStatusButtons: { flexDirection: 'row', gap: 8 },
+  addLink: { fontSize: 14, fontWeight: '700', color: ACCENT },
   empty: { alignItems: 'center', gap: 8, paddingVertical: 20 },
   emptyText: { fontSize: 14, color: MUTED },
-  meal: { gap: 2, marginTop: 4 },
-  mealHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 2 },
-  mealTitle: { fontSize: 13, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', color: MUTED },
-  mealKcal: { fontSize: 13, fontWeight: '600', color: MUTED },
-  entry: {
-    flexDirection: 'row',
+  meal: { gap: 2, paddingTop: 10, borderTopWidth: 1, borderTopColor: BORDER },
+  mealHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
+  mealIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
     alignItems: 'center',
-    gap: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: BORDER,
+    justifyContent: 'center',
+    backgroundColor: SURFACE_ALT,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
-  entryText: { flex: 1, gap: 2, paddingVertical: 10 },
-  entryName: { fontSize: 16, fontWeight: '600', color: INK },
-  entryMacros: { fontSize: 13, color: MUTED },
+  mealHeaderText: { flex: 1, gap: 2 },
+  mealTitleRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
+  mealTitle: { fontSize: 15, fontWeight: '700', color: INK },
+  mealKcal: { fontSize: 13, fontWeight: '600', color: INK_SOFT },
+  macroLine: { flexDirection: 'row', gap: 12 },
+  macroPart: { fontSize: 12, color: MUTED },
+  entry: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 54 },
+  entryText: { flex: 1, gap: 1, paddingVertical: 6 },
+  entryName: { fontSize: 14, fontWeight: '600', color: INK_SOFT },
+  entryMacros: { fontSize: 12, color: MUTED },
   remove: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: SURFACE_ALT,
   },
-  editCard: { borderWidth: 1.5, borderColor: ACCENT, borderRadius: 14, padding: 12, marginVertical: 6 },
+  editCard: { borderWidth: 1, borderColor: ACCENT, borderRadius: 12, padding: 12, marginVertical: 6 },
   editor: { gap: 6 },
   photoRow: { flexDirection: 'row', gap: 10 },
   photoTile: {
     flex: 1,
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     paddingVertical: 18,
-    borderRadius: 16,
-    backgroundColor: ACCENT_TINT,
+    borderRadius: 12,
+    backgroundColor: SURFACE_ALT,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
   },
-  photoTileText: { color: ACCENT, fontSize: 15, fontWeight: '700' },
-  scanning: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  scanNote: { fontSize: 13, lineHeight: 18, color: '#713f12', backgroundColor: '#fef9c3', borderRadius: 12, padding: 12 },
+  photoTileText: { color: INK, fontSize: 15, fontWeight: '700' },
+  photoTileCaption: { color: ACCENT, fontSize: 12 },
+  scanning: { alignItems: 'center', gap: 8, paddingVertical: 8 },
+  scanNote: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: PAPER_INK,
+    backgroundColor: PAPER,
+    borderRadius: 12,
+    padding: 12,
+    overflow: 'hidden',
+  },
   buttons: { flexDirection: 'row', gap: 8, marginTop: 8 },
 });

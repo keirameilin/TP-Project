@@ -1,22 +1,35 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getDatabase } from '../../db/database';
 import { addDays, toLocalDateString } from '../../lib/dates';
 import { ValidationError } from '../../lib/validation';
+import { useSelectedDate } from '../dailyLog/SelectedDate';
 import {
   ACCENT,
+  ACCENT_DEEP,
   BORDER,
   Button,
+  CARD,
+  CARD_BORDER,
   Dropdown,
   FAINT,
   Field,
   INK,
+  INK_SOFT,
+  INPUT_BG,
+  MountainBanner,
   MUTED,
   ON_PITCH,
+  ON_PITCH_MUTED,
+  PaperCard,
+  PAPER_INK,
+  Pill,
   PitchLink,
   Screen,
+  Section,
   Stepper,
   SURFACE_ALT,
   styles as ui,
@@ -32,7 +45,7 @@ import {
   type PlanFormErrors,
 } from './planForm';
 import { PlannedSessionRepository } from './repository';
-import { WINDOW_DAYS, type PlannedDay } from './types';
+import { WINDOW_DAYS, type PlannedDay, type PlannedSession } from './types';
 import { DuplicatePlannedDateError } from './validation';
 
 const TYPE_OPTIONS = SESSION_OPTIONS.map((o) => ({ value: o.type, label: o.label, hint: o.hint }));
@@ -40,6 +53,8 @@ const TYPE_OPTIONS = SESSION_OPTIONS.map((o) => ({ value: o.type, label: o.label
 interface Week {
   days: PlannedDay[];
   matchCount: number;
+  /** Today's plan, whichever week is shown. */
+  todayPlan: PlannedSession | null;
 }
 
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -73,6 +88,7 @@ export default function PlanScreen() {
   const [form, setForm] = useState<PlanForm>(EMPTY_PLAN_FORM);
   const [errors, setErrors] = useState<PlanFormErrors>({});
   const [busy, setBusy] = useState(false);
+  const { setDate } = useSelectedDate();
 
   useEffect(() => {
     let cancelled = false;
@@ -91,10 +107,14 @@ export default function PlanScreen() {
 
   const loadWeek = useCallback(
     async (r: PlannedSessionRepository, start: string): Promise<Week> => {
-      const [days, matchCount] = await Promise.all([r.getLookahead(start), r.countMatchesInWindow(start)]);
-      return { days, matchCount };
+      const [days, matchCount, planToday] = await Promise.all([
+        r.getLookahead(start),
+        r.countMatchesInWindow(start),
+        r.getByDate(today),
+      ]);
+      return { days, matchCount, todayPlan: planToday };
     },
-    [],
+    [today],
   );
 
   useEffect(() => {
@@ -174,9 +194,37 @@ export default function PlanScreen() {
   }
 
   const endDate = addDays(startDate, WINDOW_DAYS - 1);
+  // Today's plan gets its own card, whichever week is on screen.
+  const todayPlan = week?.todayPlan ?? null;
+
+  /** Opens the Log tab on today, where "Log as planned" fills in the session. */
+  function logToday() {
+    setDate(today);
+    router.navigate('/');
+  }
 
   return (
-    <Screen title="Training plan">
+    <Screen title="Plan" icon="calendar">
+      <MountainBanner title="Train. Improve. Compete." subtitle="Your training plan, all in one place." />
+
+      {todayPlan ? (
+        <Section title="Today’s Session" right={<Pill label="Planned" />}>
+          <PaperCard>
+            <View style={styles.todayRow}>
+              <View style={styles.todayIcon}>
+                <Ionicons name={SESSION_ICONS[todayPlan.sessionType]} size={22} color={PAPER_INK} />
+              </View>
+              <View style={styles.dayText}>
+                <Text style={styles.todayPlan}>{describePlan(todayPlan)}</Text>
+                {todayPlan.notes ? <Text style={styles.todayNotes}>{todayPlan.notes}</Text> : null}
+              </View>
+            </View>
+            <Button label="Log as planned" variant="onPaper" onPress={logToday} style={styles.todayButton} />
+          </PaperCard>
+        </Section>
+      ) : null}
+
+      <Text style={styles.heading}>Upcoming Sessions</Text>
       <Stepper
         title={startDate === today ? 'Next 7 days' : '7 days'}
         subtitle={`${shortDate(startDate)} – ${shortDate(endDate)}`}
@@ -194,7 +242,7 @@ export default function PlanScreen() {
       ) : (
         <>
           <View style={styles.matchCount}>
-            <Ionicons name="trophy" size={16} color={ON_PITCH} />
+            <Ionicons name="trophy" size={16} color={ACCENT} />
             <Text style={styles.matchCountText}>
               {week.matchCount === 0
                 ? 'No matches planned in these 7 days'
@@ -202,7 +250,8 @@ export default function PlanScreen() {
             </Text>
           </View>
 
-          {week.days.map((day) => {
+          <View style={styles.days}>
+          {week.days.map((day, index) => {
             const isPast = day.date < today;
             const name = dayName(day.date, today);
             const isEditing = editingDate === day.date;
@@ -210,7 +259,7 @@ export default function PlanScreen() {
             const canOpen = !isPast || day.session !== null;
 
             return (
-              <View key={day.date} style={[styles.day, day.date === today && styles.dayToday]}>
+              <View key={day.date} style={[styles.day, index > 0 && styles.dayDivider]}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`${name ?? ''} ${shortDate(day.date)}: ${
@@ -221,11 +270,11 @@ export default function PlanScreen() {
                   onPress={() => (isEditing ? setEditingDate(null) : startEditing(day))}
                   style={({ pressed }) => [styles.dayRow, pressed && ui.dimmed]}
                 >
-                  <View style={[styles.dayIcon, day.session && styles.dayIconPlanned]}>
+                  <View style={[styles.dayIcon, day.date === today && styles.dayIconToday]}>
                     <Ionicons
                       name={day.session ? SESSION_ICONS[day.session.sessionType] : 'add'}
-                      size={20}
-                      color={day.session ? '#fff' : canOpen ? ACCENT : FAINT}
+                      size={22}
+                      color={day.session ? INK : canOpen ? ACCENT : FAINT}
                     />
                   </View>
                   <View style={styles.dayText}>
@@ -240,7 +289,7 @@ export default function PlanScreen() {
                     )}
                   </View>
                   {canOpen ? (
-                    <Ionicons name={isEditing ? 'chevron-up' : 'chevron-down'} size={18} color={MUTED} />
+                    <Ionicons name={isEditing ? 'chevron-down' : 'chevron-forward'} size={18} color={INK_SOFT} />
                   ) : null}
                 </Pressable>
 
@@ -291,6 +340,7 @@ export default function PlanScreen() {
               </View>
             );
           })}
+          </View>
         </>
       )}
     </Screen>
@@ -299,25 +349,43 @@ export default function PlanScreen() {
 
 const styles = StyleSheet.create({
   loading: { marginTop: 24 },
+  heading: { fontSize: 17, fontWeight: '700', color: ON_PITCH, marginTop: 4 },
+  todayRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  todayIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: PAPER_INK,
+  },
+  todayPlan: { fontSize: 15, fontWeight: '700', color: PAPER_INK },
+  todayNotes: { fontSize: 13, color: ACCENT_DEEP },
+  todayButton: { minHeight: 38 },
   matchCount: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  matchCountText: { color: ON_PITCH, fontSize: 15, fontWeight: '600' },
-  day: { backgroundColor: '#fff', borderRadius: 18, overflow: 'hidden' },
-  dayToday: { borderWidth: 2, borderColor: '#86efac' },
-  dayRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
+  matchCountText: { color: ON_PITCH_MUTED, fontSize: 14, fontWeight: '600' },
+  // One card holding every day, separated by hairlines.
+  days: { backgroundColor: CARD, borderRadius: 16, borderWidth: 1, borderColor: CARD_BORDER, overflow: 'hidden' },
+  day: {},
+  dayDivider: { borderTopWidth: 1, borderTopColor: BORDER },
+  dayRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14, gap: 12 },
   dayIcon: {
     width: 42,
     height: 42,
-    borderRadius: 21,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: SURFACE_ALT,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
-  dayIconPlanned: { backgroundColor: ACCENT },
+  dayIconToday: { borderColor: ACCENT },
   dayText: { flex: 1, gap: 2 },
-  dayDate: { fontSize: 13, fontWeight: '600', color: MUTED },
-  planText: { fontSize: 17, fontWeight: '700', color: INK },
-  planNotes: { fontSize: 13, color: MUTED },
-  nonePlanned: { fontSize: 16, color: FAINT },
-  editor: { gap: 6, padding: 14, paddingTop: 10, borderTopWidth: 1, borderTopColor: BORDER, backgroundColor: '#fff' },
+  dayDate: { fontSize: 13, fontWeight: '600', color: INK },
+  planText: { fontSize: 14, color: INK_SOFT },
+  planNotes: { fontSize: 12, color: MUTED },
+  nonePlanned: { fontSize: 14, color: FAINT },
+  editor: { gap: 6, padding: 14, paddingTop: 10, borderTopWidth: 1, borderTopColor: BORDER, backgroundColor: INPUT_BG },
   buttons: { flexDirection: 'row', gap: 8, marginTop: 8 },
 });

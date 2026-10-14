@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router/js-tabs';
 import type { ColorValue } from 'react-native';
 
-import { ACCENT, BORDER, MUTED, type IconName } from '../../features/dailyLog/ui';
+import { ACCENT, CARD_BORDER, INK_SOFT, PITCH, type IconName } from '../../features/dailyLog/ui';
 
 /** Filled icon for the selected tab, outline for the rest. */
 const tabIcon = (name: IconName, outline: IconName) =>
@@ -17,8 +17,8 @@ export default function TabLayout() {
         // Screens draw their own titles.
         headerShown: false,
         tabBarActiveTintColor: ACCENT,
-        tabBarInactiveTintColor: MUTED,
-        tabBarStyle: { backgroundColor: '#fff', borderTopColor: BORDER },
+        tabBarInactiveTintColor: INK_SOFT,
+        tabBarStyle: { backgroundColor: PITCH, borderTopColor: CARD_BORDER },
         tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
         tabBarHideOnKeyboard: true,
       }}

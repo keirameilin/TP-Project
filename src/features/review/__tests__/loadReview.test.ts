@@ -45,6 +45,13 @@ describe('a match day', () => {
     const data = await loadDayReview(repos, TODAY);
     expect(data.session).toMatchObject({ sessionType: 'match', durationMinutes: 90, sessionQuality: 3 });
     expect(data.effort?.effort).toEqual({ source: 'rating', level: 8, durationMinutes: 90, trainingLoad: 720 });
+    // Nothing entered: 9.5 MET × 75 kg × 1.5 h = 1068.75 → 1069 kcal, from the session type.
+    expect(data.calories?.calories).toEqual({ source: 'estimated', method: 'session_type', kcal: 1069 });
+    expect(data.today).toMatchObject({
+      eaten: { calories: 3477, carbsG: 525, proteinG: 135 },
+      status: 'complete',
+      targets: { calories: 3477, carbsG: 525 },
+    });
     expect(data.review?.outcome).toBe('bad');
     expect(data.review?.findings.map((f) => f.text)).toEqual([
       'Yesterday you ate 4.1 g/kg of carbs. The soccer guideline for the day before a match is 6–8 g/kg.',
@@ -126,6 +133,7 @@ describe('days without a review', () => {
     const data = await loadDayReview(repos, TODAY);
     expect(data.review).toBeNull();
     expect(data.effort).toBeNull();
+    expect(data.calories).toBeNull();
     // 5 × 75 = 375 g carbs; 540 + 1500 + 837 = 2877 kcal
     expect(data.tomorrow.targets).toMatchObject({ ok: true, targets: { calories: 2877, carbsG: 375 } });
     expect(data.tomorrow.explanation).toBe('Tomorrow is a conditioning or gym day: carbs are set to 5 g/kg (estimate).');

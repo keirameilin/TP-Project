@@ -6,18 +6,18 @@ export const SESSION_OPTIONS: {
   label: string;
   hint: string;
   /** Ionicons glyph name. */
-  icon: 'trophy' | 'flash' | 'football' | 'barbell' | 'bed';
+  icon: 'football' | 'walk' | 'footsteps' | 'barbell' | 'moon';
 }[] = [
-  { type: 'match', label: 'Match', hint: 'Competitive game', icon: 'trophy' },
+  { type: 'match', label: 'Match', hint: 'Competitive game', icon: 'football' },
   {
     type: 'hiit_conditioning',
     label: 'Conditioning',
     hint: 'Sprints, fitness drills, high-intensity running',
-    icon: 'flash',
+    icon: 'walk',
   },
-  { type: 'technical_tactical', label: 'Technical', hint: 'Passing, shooting, decision-making', icon: 'football' },
+  { type: 'technical_tactical', label: 'Technical', hint: 'Passing, shooting, decision-making', icon: 'footsteps' },
   { type: 'gym_strength', label: 'Gym', hint: 'Gym conditioning', icon: 'barbell' },
-  { type: 'rest_day', label: 'Rest', hint: 'No training', icon: 'bed' },
+  { type: 'rest_day', label: 'Rest', hint: 'No training', icon: 'moon' },
 ];
 
 export const SESSION_LABELS = Object.fromEntries(SESSION_OPTIONS.map((o) => [o.type, o.label])) as Record<

@@ -1,6 +1,7 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getDatabase } from '../../db/database';
 import { toLocalDateString } from '../../lib/dates';
@@ -17,18 +18,22 @@ import {
 } from '../bodyweight';
 import {
   ACCENT,
+  ACCENT_DEEP,
   ACCENT_TINT,
   Button,
   Dropdown,
   Field,
-  INK,
   INK_SOFT,
-  MACRO_COLORS,
-  MUTED,
+  MacroTile,
+  MountainBanner,
   ON_PITCH,
+  PAPER,
+  PAPER_BORDER,
+  PAPER_INK,
+  PAPER_MUTED,
+  PaperCard,
   Screen,
   Section,
-  SURFACE_ALT,
   styles as ui,
   type DropdownOption,
 } from '../dailyLog/ui';
@@ -65,6 +70,21 @@ const LEVEL_OPTIONS: DropdownOption<PlayerLevel>[] = [
   { value: 'professional', label: 'Professional', hint: 'Full-time: training most days plus matches' },
 ];
 
+const LEVEL_NAMES: Record<PlayerLevel, string> = {
+  recreational: 'Recreational',
+  competitive: 'Competitive',
+  professional: 'Professional',
+};
+
+type PanelKey = 'details' | 'targets' | 'maintenance';
+
+/** The rows of the profile card; each opens one section below it. */
+const PANELS: { key: PanelKey; label: string; icon: 'create-outline' | 'stats-chart' | 'trending-up' }[] = [
+  { key: 'details', label: 'My details', icon: 'create-outline' },
+  { key: 'targets', label: 'Daily targets', icon: 'stats-chart' },
+  { key: 'maintenance', label: 'Maintenance from my logs', icon: 'trending-up' },
+];
+
 interface Repos {
   profile: PlayerProfileRepository;
   weight: BodyWeightRepository;
@@ -98,6 +118,8 @@ export default function SettingsScreen() {
   // Targets for today from the saved profile; refreshed after each save.
   const [targets, setTargets] = useState<TargetsResult | null>(null);
   const [maintenance, setMaintenance] = useState<MaintenanceResult | null>(null);
+  // Which row of the profile card is expanded; undefined until the player picks one.
+  const [open, setOpen] = useState<PanelKey | null | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -243,15 +265,50 @@ export default function SettingsScreen() {
     }
   }
 
+  // Until the player picks a row, the details form opens by itself when targets can't be worked out yet.
+  const shown = open === undefined ? (targets && !targets.ok ? 'details' : null) : open;
+  const profileStats = [
+    feet ? `${feet}'${inches || 0}"` : null,
+    savedWeightLb !== null ? `${savedWeightLb} lb` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   const parsedAge = parseNumber(age);
   const estimatedMax =
     parsedAge !== null && Number.isInteger(parsedAge) && parsedAge > 0 ? estimatedMaxHeartRate(parsedAge) : null;
 
   return (
-    <Screen title="Player">
+    <Screen title="Player" icon="person">
       {repos ? (
         <>
-          <Section title="About you" icon="person">
+          <PaperCard style={styles.profileCard}>
+            <View style={styles.profileHeader}>
+              <View style={styles.avatar}>
+                <Ionicons name="person" size={30} color={PAPER} />
+              </View>
+              <View style={styles.profileText}>
+                <Text style={styles.profileName}>{level ? `${LEVEL_NAMES[level]} player` : 'Your profile'}</Text>
+                <Text style={styles.profileStats}>{profileStats || 'Add your details to get your targets'}</Text>
+              </View>
+            </View>
+            {PANELS.map((panel) => (
+              <Pressable
+                key={panel.key}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: shown === panel.key }}
+                onPress={() => setOpen(shown === panel.key ? null : panel.key)}
+                style={({ pressed }) => [styles.menuRow, pressed && ui.dimmed]}
+              >
+                <Ionicons name={panel.icon} size={20} color={PAPER_INK} />
+                <Text style={styles.menuLabel}>{panel.label}</Text>
+                <Ionicons name={shown === panel.key ? 'chevron-down' : 'chevron-forward'} size={18} color={PAPER_MUTED} />
+              </Pressable>
+            ))}
+          </PaperCard>
+
+          {shown === 'details' ? (
+          <Section title="My details">
             <Text style={ui.hint}>Used to estimate your daily calorie and macro targets.</Text>
             <View style={ui.grid}>
               <Field
@@ -336,20 +393,27 @@ export default function SettingsScreen() {
 
             {errors.form ? <Text style={ui.errorText}>{errors.form}</Text> : null}
             {saved ? <Text style={styles.savedText}>Saved.</Text> : null}
-            <Button label="Save" icon="checkmark" onPress={handleSave} busy={saving} style={styles.saveButton} />
+            <Button label="Save" onPress={handleSave} busy={saving} style={styles.saveButton} />
           </Section>
+          ) : null}
 
-          <Section title="Daily targets" icon="flame">
-            {targets ? <TargetsView result={targets} /> : <ActivityIndicator color={ACCENT} />}
-          </Section>
+          {shown === 'targets' ? (
+            <Section title="Daily targets">
+              {targets ? <TargetsView result={targets} /> : <ActivityIndicator color={ACCENT} />}
+            </Section>
+          ) : null}
 
-          <Section title="Maintenance from your logs" icon="trending-up">
-            {maintenance ? (
-              <MaintenanceView result={maintenance} baselineKcal={targets?.ok ? targets.targets.calories : null} />
-            ) : (
-              <ActivityIndicator color={ACCENT} />
-            )}
-          </Section>
+          {shown === 'maintenance' ? (
+            <Section title="Maintenance from your logs">
+              {maintenance ? (
+                <MaintenanceView result={maintenance} baselineKcal={targets?.ok ? targets.targets.calories : null} />
+              ) : (
+                <ActivityIndicator color={ACCENT} />
+              )}
+            </Section>
+          ) : null}
+
+          <MountainBanner title={'Small steps\nbig progress.'} height={200} centered />
         </>
       ) : errors.form ? (
         <Text style={ui.onPitchText}>{errors.form}</Text>
@@ -375,9 +439,9 @@ function TargetsView({ result }: { result: TargetsResult }) {
         <Text style={styles.caloriesLabel}>per day to maintain weight</Text>
       </View>
       <View style={styles.macroRow}>
-        <Macro label="Protein" color={MACRO_COLORS.protein} grams={t.proteinG} detail={perKg(t.proteinG)} />
-        <Macro label="Carbs" color={MACRO_COLORS.carbs} grams={t.carbsG} detail={perKg(t.carbsG)} />
-        <Macro label="Fat" color={MACRO_COLORS.fat} grams={t.fatG} detail={perKg(t.fatG)} />
+        <MacroTile macro="protein" label="Protein" value={`${t.proteinG} g`} detail={perKg(t.proteinG)} />
+        <MacroTile macro="carbs" label="Carbs" value={`${t.carbsG} g`} detail={perKg(t.carbsG)} />
+        <MacroTile macro="fat" label="Fat" value={`${t.fatG} g`} detail={perKg(t.fatG)} />
       </View>
       <Text style={styles.explainTitle}>How this was calculated</Text>
       {explainTargets(t).map((line) => (
@@ -424,34 +488,40 @@ function MaintenanceView({ result, baselineKcal }: { result: MaintenanceResult; 
   );
 }
 
-function Macro(props: { label: string; color: string; grams: number; detail: string }) {
-  return (
-    <View style={styles.macro}>
-      <View style={styles.macroLabelRow}>
-        <View style={[styles.macroDot, { backgroundColor: props.color }]} />
-        <Text style={styles.macroLabel}>{props.label}</Text>
-      </View>
-      <Text style={styles.macroValue}>{props.grams} g</Text>
-      <Text style={styles.macroDetail}>{props.detail}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   loading: { marginTop: 24 },
   gap: { gap: 8 },
+  profileCard: { padding: 0, gap: 0, borderRadius: 16, overflow: 'hidden' },
+  profileHeader: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16 },
+  avatar: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: PAPER_INK,
+    borderWidth: 2,
+    borderColor: ACCENT_DEEP,
+  },
+  profileText: { flex: 1, gap: 2 },
+  profileName: { fontSize: 18, fontWeight: '800', color: PAPER_INK },
+  profileStats: { fontSize: 14, color: ACCENT_DEEP },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: PAPER_BORDER,
+  },
+  menuLabel: { flex: 1, fontSize: 15, fontWeight: '500', color: PAPER_INK },
   explainTitle: { fontSize: 14, fontWeight: '700', color: INK_SOFT, marginTop: 6 },
   dropdowns: { gap: 4 },
   savedText: { color: ACCENT, fontWeight: '600' },
   saveButton: { marginTop: 8 },
-  calorieBox: { backgroundColor: ACCENT_TINT, borderRadius: 16, paddingVertical: 16, alignItems: 'center', gap: 2 },
-  calories: { fontSize: 32, fontWeight: '800', letterSpacing: -0.5, color: ACCENT },
+  calorieBox: { backgroundColor: ACCENT_TINT, borderRadius: 12, paddingVertical: 14, alignItems: 'center', gap: 2 },
+  calories: { fontSize: 30, fontWeight: '800', letterSpacing: -0.5, color: ACCENT },
   caloriesLabel: { fontSize: 13, color: INK_SOFT },
-  macroRow: { flexDirection: 'row', gap: 10 },
-  macro: { flex: 1, gap: 4, backgroundColor: SURFACE_ALT, borderRadius: 14, padding: 12 },
-  macroLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  macroDot: { width: 8, height: 8, borderRadius: 4 },
-  macroLabel: { fontSize: 13, fontWeight: '600', color: INK_SOFT },
-  macroValue: { fontSize: 18, fontWeight: '800', color: INK },
-  macroDetail: { fontSize: 12, color: MUTED },
+  macroRow: { flexDirection: 'row', gap: 8 },
 });

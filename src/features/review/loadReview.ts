@@ -1,6 +1,6 @@
 import { addDays } from '../../lib/dates';
 import type { DailyLogRepos } from '../dailyLog/saveDay';
-import { sessionEffort, type EffortResult } from '../intensity/effort';
+import { sessionCalories, sessionEffort, type CaloriesResult, type EffortResult, type PlayerInput } from '../intensity/effort';
 import type { DailyMacros, LogDayStatus } from '../nutrition/types';
 import type { PlannedSession } from '../planning';
 import {
@@ -30,6 +30,10 @@ export interface DayReviewData {
   session: TrainingSession | null;
   /** Effort level with its source; null on a rest day. */
   effort: EffortResult | null;
+  /** Calories burned with its source; null on a rest day. */
+  calories: CaloriesResult | null;
+  /** The day's food against the day's targets, for the nutrition card. */
+  today: DayNutrition;
   /** Null on rest days and for sessions without a session rating: those get no review. */
   review: DayReview | null;
   tomorrow: TomorrowTargets;
@@ -97,18 +101,20 @@ export async function loadDayReview(repos: DailyLogRepos, date: string): Promise
     recovery: session?.sessionType === 'match' ? describeMatchRecovery(weightKg) : null,
   };
 
+  const player: PlayerInput = {
+    age: profile?.age ?? null,
+    sex: profile?.sex ?? null,
+    maxHeartRate: profile?.maxHeartRate ?? null,
+    weightKg,
+  };
+  const trained = session !== null && session.sessionType !== 'rest_day';
+
   return {
     date,
     session,
-    effort:
-      session && session.sessionType !== 'rest_day'
-        ? sessionEffort(session, {
-            age: profile?.age ?? null,
-            sex: profile?.sex ?? null,
-            maxHeartRate: profile?.maxHeartRate ?? null,
-            weightKg,
-          })
-        : null,
+    effort: trained ? sessionEffort(session, player) : null,
+    calories: trained ? sessionCalories(session, player) : null,
+    today: nutritionOn(date),
     review: isRated
       ? buildDayReview({
           quality: session.sessionQuality!,
