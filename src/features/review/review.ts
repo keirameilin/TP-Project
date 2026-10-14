@@ -51,8 +51,6 @@ export interface DayReview {
   cannotAssess: string[];
   /** "Not enough data yet" and exactly what is missing; empty when the pattern could be worked out. */
   patternMissing: string[];
-  /** What the app doesn't track, and that this is a pattern rather than proof. */
-  blindSpots: string;
 }
 
 export const NOTHING_STANDS_OUT = 'Nothing in your logged data explains this session.';
@@ -215,14 +213,11 @@ export function buildDayReview(input: ReviewInput): DayReview {
   }
   const findings = ordered.slice(0, R.maxFindings.value);
 
-  const untracked = [input.sleepHours === null ? 'sleep (not entered for this session)' : null, 'hydration', 'stress', 'illness']
-    .filter((x): x is string => x !== null);
   return {
     outcome,
     findings,
     nothingStandsOut: findings.length === 0 ? NOTHING_STANDS_OUT : null,
     cannotAssess,
     patternMissing: pattern.missing,
-    blindSpots: `This app can't see ${untracked.slice(0, -1).join(', ')} or ${untracked[untracked.length - 1]}. What it shows is a pattern in your logs, not proof of what caused the session to go this way.`,
   };
 }

@@ -116,15 +116,6 @@ describe('sleep', () => {
     expect(texts({ sleepHours: 6 })).toEqual([]);
     expect(texts({ sleepHours: null })).toEqual([]);
   });
-
-  it('names sleep among the things the app can’t see only when it was not entered', () => {
-    expect(review({ sleepHours: null }).blindSpots).toBe(
-      "This app can't see sleep (not entered for this session), hydration, stress or illness. What it shows is a pattern in your logs, not proof of what caused the session to go this way.",
-    );
-    expect(review({ sleepHours: 8 }).blindSpots).toBe(
-      "This app can't see hydration, stress or illness. What it shows is a pattern in your logs, not proof of what caused the session to go this way.",
-    );
-  });
 });
 
 describe('a session that went well', () => {

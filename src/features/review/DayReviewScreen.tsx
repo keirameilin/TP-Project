@@ -38,7 +38,7 @@ const goBack = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
 /**
  * The end-of-day review for one date: what the session was, what in the player's own logs may have
- * played a part, what the app can't see, and tomorrow's targets. Rest days show only the targets.
+ * played a part, and tomorrow's targets. Rest days show only the targets.
  */
 export default function DayReviewScreen() {
   const params = useLocalSearchParams<{ date?: string }>();
@@ -118,34 +118,28 @@ function Summary({ data }: { data: DayReviewData }) {
 
 function Findings({ review }: { review: DayReview }) {
   return (
-    <>
-      <Section title={review.outcome === 'good' ? 'What lined up' : 'Why it may have gone this way'} icon="search">
-        {review.findings.map((finding) => (
-          <Bullet key={finding.text} text={finding.text} />
-        ))}
-        {review.nothingStandsOut ? <Text style={styles.plain}>{review.nothingStandsOut}</Text> : null}
-        {review.cannotAssess.map((line) => (
-          <Text key={line} style={ui.hint}>
-            {line}
-          </Text>
-        ))}
-        {review.patternMissing.length > 0 ? (
-          <View style={styles.missing}>
-            <Text style={ui.hint}>Not enough data yet for your own pattern between carbs and how sessions go. It needs:</Text>
-            {review.patternMissing.map((line) => (
-              <Text key={line} style={ui.hint}>{`• ${line}`}</Text>
-            ))}
-          </View>
-        ) : null}
-        <Text style={ui.hint}>
-          Anything marked (estimate) is this app’s own assumption, not a figure from the research.
+    <Section title={review.outcome === 'good' ? 'What lined up' : 'Why it may have gone this way'} icon="search">
+      {review.findings.map((finding) => (
+        <Bullet key={finding.text} text={finding.text} />
+      ))}
+      {review.nothingStandsOut ? <Text style={styles.plain}>{review.nothingStandsOut}</Text> : null}
+      {review.cannotAssess.map((line) => (
+        <Text key={line} style={ui.hint}>
+          {line}
         </Text>
-      </Section>
-
-      <Section title="What the app can’t see" icon="eye-off">
-        <Text style={styles.plain}>{review.blindSpots}</Text>
-      </Section>
-    </>
+      ))}
+      {review.patternMissing.length > 0 ? (
+        <View style={styles.missing}>
+          <Text style={ui.hint}>Not enough data yet for your own pattern between carbs and how sessions go. It needs:</Text>
+          {review.patternMissing.map((line) => (
+            <Text key={line} style={ui.hint}>{`• ${line}`}</Text>
+          ))}
+        </View>
+      ) : null}
+      <Text style={ui.hint}>
+        Anything marked (estimate) is this app’s own assumption, not a figure from the research.
+      </Text>
+    </Section>
   );
 }
 

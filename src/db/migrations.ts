@@ -154,6 +154,11 @@ const MIGRATIONS: string[] = [
   ALTER TABLE training_sessions ADD COLUMN sleep_hours REAL
     CHECK (sleep_hours IS NULL OR sleep_hours BETWEEN 0 AND 14);
   `,
+  // v12: the watch-import table from v6 was never used after the Apple Health / Health Connect
+  // import was removed; players now type heart rate and calories into the session itself (v9).
+  `
+  DROP TABLE IF EXISTS workout_metrics;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
